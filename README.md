@@ -1,2 +1,2 @@
 # ernsauth
-ERNS Authentication Server
+ERNS Authentication Gateway
