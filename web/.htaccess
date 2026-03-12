@@ -1,0 +1,16 @@
+DirectoryIndex index.php
+
+# Deny access to sensitive file types
+<FilesMatch "\.(log|sql|sqlite|json|md|php~)$">
+    Require all denied
+</FilesMatch>
+
+# Deny hidden files
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# Force HTTPS (uncomment if needed)
+# RewriteEngine On
+# RewriteCond %{HTTPS} off
+# RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]

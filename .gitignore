@@ -1,1 +1,4 @@
 .claude/
+config/settings.php
+lib/phpmailer/
+*.log

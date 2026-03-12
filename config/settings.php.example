@@ -1,0 +1,47 @@
+<?php
+return [
+    // MySQL connection
+    'db_host'     => '127.0.0.1',
+    'db_port'     => 3306,
+    'db_name'     => 'ernsauth',
+    'db_user'     => 'ernsauth',
+    'db_pass'     => '',
+
+    // Application
+    'base_url'    => 'https://example.com/apps/ernsauth/web',
+    'app_name'    => 'ErnsAuth',
+
+    // Session / cookies
+    'cookie_name'         => 'ea_session',
+    'session_ttl'         => 2592000,   // 30 days
+    'session_idle_timeout'=> 0,         // 0 = no idle timeout
+    'cookie_path'         => '/apps/ernsauth/',
+
+    // SSO
+    'challenge_ttl'       => 300,       // 5 minutes
+    'auth_code_ttl'       => 60,        // 1 minute
+    'challenge_decoys'    => 3,
+
+    // OTP / Password Reset
+    'otp_ttl'             => 600,       // 10 minutes
+    'reset_ttl'           => 1800,      // 30 minutes
+
+    // SMTP
+    'smtp_host'     => '',
+    'smtp_port'     => 587,
+    'smtp_user'     => '',
+    'smtp_pass'     => '',
+    'smtp_from'     => 'noreply@example.com',
+    'smtp_from_name'=> 'ErnsAuth',
+
+    // Rate limits [max_attempts, window_seconds]
+    'rate_login'          => [5, 900],
+    'rate_totp'           => [5, 900],
+    'rate_otp_send'       => [3, 900],
+    'rate_otp_verify'     => [5, 900],
+    'rate_challenge'      => [30, 300],
+    'rate_reset'          => [3, 3600],
+
+    // cURL timeout for client library
+    'curl_timeout'        => 15,
+];
