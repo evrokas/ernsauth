@@ -30,10 +30,17 @@ class SSO
         ];
     }
 
-    public static function pollChallenge(Config $config, string $challengeId): array
+    public static function pollChallenge(Config $config, string $challengeId, string $clientAppId): array
     {
-        $st = $config->db()->prepare("SELECT * FROM sso_challenges WHERE id = :id");
-        $st->execute([':id' => $challengeId]);
+        // Scoped to the polling app's own challenges. Without client_app_id
+        // in the WHERE clause, any app with a valid API key could poll --
+        // and read back the auth_code of -- a challenge created by a
+        // *different* app, if it ever learned the challenge_id through some
+        // other channel (logs, a referrer leak, a compromised app). The ID
+        // is 128-bit random and not practically guessable on its own, but
+        // this shouldn't be the only thing enforcing the app boundary.
+        $st = $config->db()->prepare("SELECT * FROM sso_challenges WHERE id = :id AND client_app_id = :app_id");
+        $st->execute([':id' => $challengeId, ':app_id' => $clientAppId]);
         $row = $st->fetch();
 
         if (!$row) {
@@ -118,15 +125,19 @@ class SSO
         )->execute([':uid' => $userId, ':id' => $challengeId]);
     }
 
-    public static function exchangeCode(Config $config, string $authCode): array
+    public static function exchangeCode(Config $config, string $authCode, string $clientAppId): array
     {
+        // Scoped to the exchanging app's own challenges -- same reasoning
+        // as pollChallenge() above: an auth_code is 128-bit random and not
+        // practically guessable, but the app boundary shouldn't rest on
+        // that alone.
         $st = $config->db()->prepare(
             "SELECT c.*, u.username, u.email, u.display_name
              FROM sso_challenges c
              JOIN users u ON c.approved_by = u.id
-             WHERE c.auth_code = :code AND c.status = 'approved'"
+             WHERE c.auth_code = :code AND c.status = 'approved' AND c.client_app_id = :app_id"
         );
-        $st->execute([':code' => $authCode]);
+        $st->execute([':code' => $authCode, ':app_id' => $clientAppId]);
         $row = $st->fetch();
 
         if (!$row) {
@@ -139,9 +150,22 @@ class SSO
             return ['error' => 'Auth code expired'];
         }
 
-        // Nullify auth_code (single-use)
-        $config->db()->prepare("UPDATE sso_challenges SET auth_code = NULL WHERE id = :id")
-            ->execute([':id' => $row['id']]);
+        // Nullify auth_code (single-use) -- conditioned on the code still
+        // matching, and checked via rowCount, not assumed. The plain
+        // unconditional UPDATE this replaced left a gap between the SELECT
+        // above and this write: two exchange_code calls racing on the same
+        // valid code could both pass the SELECT before either nullified it,
+        // both getting back a successful exchange for the same one-time
+        // code. Re-matching auth_code here means only whichever request's
+        // UPDATE lands first (they serialize on InnoDB's row lock) actually
+        // clears it; the loser's WHERE no longer matches and rowCount is 0.
+        $upd = $config->db()->prepare(
+            "UPDATE sso_challenges SET auth_code = NULL WHERE id = :id AND auth_code = :code"
+        );
+        $upd->execute([':id' => $row['id'], ':code' => $authCode]);
+        if ($upd->rowCount() === 0) {
+            return ['error' => 'Invalid or expired auth code'];
+        }
 
         return [
             'user_id'      => $row['approved_by'],

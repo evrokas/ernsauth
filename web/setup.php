@@ -32,8 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error)) {
         $error = 'Username must be 3-50 characters.';
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = 'Invalid email address.';
-    } elseif (strlen($password) < 8) {
-        $error = 'Password must be at least 8 characters.';
+    } elseif (strlen($password) < 12) {
+        $error = 'Password must be at least 12 characters.';
     } elseif ($password !== $confirm) {
         $error = 'Passwords do not match.';
     } else {
@@ -87,10 +87,10 @@ $h = function($s) { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); };
     <input type="text" id="display_name" name="display_name" value="<?= $h($_POST['display_name'] ?? '') ?>" placeholder="Optional">
 
     <label for="password">Password</label>
-    <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password">
+    <input type="password" id="password" name="password" required minlength="12" autocomplete="new-password">
 
     <label for="confirm">Confirm Password</label>
-    <input type="password" id="confirm" name="confirm" required minlength="8" autocomplete="new-password">
+    <input type="password" id="confirm" name="confirm" required minlength="12" autocomplete="new-password">
 
     <button type="submit">Create Admin Account</button>
   </form>
