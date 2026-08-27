@@ -9,6 +9,7 @@
 - `src/` — PHP classes (Config, Auth, TOTP, SSO, RateLimit, AuditLog, Mailer)
 - `config/settings.php` — Deployment config (DB creds, SMTP, URLs)
 - `client/ErnsAuthClient.php` — Drop-in client library for integrating apps
+- `client/VersionCheck.php` — Lets an integrating app detect when its client-library clone is behind the latest commit on GitHub
 - `lib/phpmailer/` — PHPMailer (external dependency, git-ignored)
 
 ## Key Patterns
@@ -30,3 +31,12 @@
 ## First Client App
 - Route Tracker at `/var/www/html/apps/tracker`
 - Uses `client/ErnsAuthClient.php` for SSO integration
+
+## Branches
+- `main` — active development
+- `stable` — latest stable release; integrating apps clone this branch
+  (e.g. `git clone -b stable ... lib/ernsauth`), not `main`, so their
+  vendored client library only moves forward on a deliberate update, not
+  every in-progress commit. Fast-forward it to a vetted `main` commit when
+  cutting a release; `client/VersionCheck.php` is what lets an integrating
+  app detect that a newer commit has landed here.

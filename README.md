@@ -75,16 +75,32 @@ GET/POST sso-api.php?action=<action>
 
 ## Client Integration
 
-Copy `client/ErnsAuthClient.php` into your app and configure it with your app's API key and the ErnsAuth base URL:
+Clone this repo's `stable` branch into your app (e.g. `lib/ernsauth`) rather than hand-copying `client/ErnsAuthClient.php` — `stable` always holds the latest stable release, and `git pull` there picks up updates without a manual re-copy that can silently drift from upstream:
+
+```bash
+git clone -b stable https://github.com/evrokas/ernsauth.git lib/ernsauth
+```
 
 ```php
-require_once 'ErnsAuthClient.php';
+require_once 'lib/ernsauth/client/ErnsAuthClient.php';
 
-$client = new ErnsAuthClient([
-    'base_url' => 'https://auth.example.com',
-    'api_key'  => 'your-app-api-key',
-]);
+$client = new ErnsAuthClient('https://auth.example.com/sso-api.php', 'your-app-api-key');
 ```
+
+### Checking for updates
+
+`client/VersionCheck.php` compares the app's local clone against `stable`'s current commit on GitHub (`git ls-remote`, no auth needed since this repo is public) and reports whether a newer version is available, so an integrating app can prompt an admin to update instead of silently drifting:
+
+```php
+require_once 'lib/ernsauth/client/VersionCheck.php';
+
+$result = VersionCheck::check(__DIR__ . '/lib/ernsauth');
+if ($result['status'] === 'update_available') {
+    // show a notice: run `cd lib/ernsauth && git pull`
+}
+```
+
+`$result['status']` is one of `up_to_date`, `update_available`, or `unknown` (network unreachable, not a git checkout, etc. -- see `$result['reason']`); it never throws, but it does make a network call with up to a few seconds' timeout, so cache the result (e.g. once a day) rather than calling it on every request. See the docblock in `client/VersionCheck.php` for the full signature.
 
 ## Database Tables
 
