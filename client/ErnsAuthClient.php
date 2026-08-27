@@ -4,7 +4,7 @@
  * ErnsAuthClient — Drop-in PHP class for client apps.
  *
  * Usage:
- *   $client = new ErnsAuthClient('https://example.com/apps/ernsauth/web/sso-api.php', 'your-api-key');
+ *   $client = new ErnsAuthClient('https://auth.example.com/web/sso-api.php', 'your-api-key');
  *   $challenge = $client->createChallenge($_SERVER['REMOTE_ADDR'], $_SERVER['HTTP_USER_AGENT'] ?? '');
  *   $poll = $client->pollChallenge($challenge['challenge_id']);
  *   $user = $client->exchangeCode($poll['auth_code']);

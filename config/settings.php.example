@@ -8,14 +8,14 @@ return [
     'db_pass'     => '',
 
     // Application
-    'base_url'    => 'https://example.com/apps/ernsauth/web',
+    'base_url'    => 'https://auth.example.com/web',
     'app_name'    => 'ErnsAuth',
 
     // Session / cookies
     'cookie_name'         => 'ea_session',
     'session_ttl'         => 2592000,   // 30 days
     'session_idle_timeout'=> 0,         // 0 = no idle timeout
-    'cookie_path'         => '/apps/ernsauth/',
+    'cookie_path'         => '/',
 
     // SSO
     'challenge_ttl'       => 300,       // 5 minutes

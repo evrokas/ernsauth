@@ -10,7 +10,7 @@ class Auth
             $config = Config::getInstance();
             session_set_cookie_params([
                 'lifetime' => 0,
-                'path'     => $config->get('cookie_path', '/apps/ernsauth/'),
+                'path'     => $config->get('cookie_path', '/'),
                 'secure'   => self::isSecure(),
                 'httponly'  => true,
                 'samesite'  => 'Strict',
@@ -102,7 +102,7 @@ class Auth
 
         setcookie($config->get('cookie_name', 'ea_session'), $token, [
             'expires'  => $expiresAt,
-            'path'     => $config->get('cookie_path', '/apps/ernsauth/'),
+            'path'     => $config->get('cookie_path', '/'),
             'secure'   => self::isSecure(),
             'httponly'  => true,
             'samesite'  => 'Strict',
@@ -127,7 +127,7 @@ class Auth
         // Clear cookie
         setcookie($cookieName, '', [
             'expires'  => time() - 3600,
-            'path'     => $config->get('cookie_path', '/apps/ernsauth/'),
+            'path'     => $config->get('cookie_path', '/'),
             'secure'   => self::isSecure(),
             'httponly'  => true,
             'samesite'  => 'Strict',
