@@ -5,6 +5,16 @@
     var csrfToken = document.querySelector('meta[name="csrf-token"]').content;
     var pollTimer = null;
 
+    // Bumped by any action that changes a challenge's state (approve/reject)
+    // and captured by each loadPendingLogins() call. A pending_logins fetch
+    // is only rendered if this still matches when it resolves -- otherwise
+    // it's a stale response (issued before the action, but landing after)
+    // and would just resurrect a card the user already dismissed by
+    // overwriting the list with the pre-action data. Without this, a poll
+    // in flight at the moment of a reject/approve click can win that race
+    // and show the rejected card again a few seconds later.
+    var pendingListVersion = 0;
+
     // ── API helpers ───────────────────────────────────────────────────────
 
     function api(action, opts) {
@@ -78,7 +88,9 @@
     // ── Pending Logins ────────────────────────────────────────────────────
 
     function loadPendingLogins() {
+        var version = ++pendingListVersion;
         api('pending_logins').then(function(data) {
+            if (version !== pendingListVersion) return; // superseded by a newer poll or a reject/approve
             var container = document.getElementById('pending-logins');
             if (!data.challenges || data.challenges.length === 0) {
                 container.innerHTML = '<div class="empty-state">No pending login requests</div>';
@@ -125,6 +137,7 @@
             body: { challenge_id: challengeId, selected_number: number }
         }).then(function(data) {
             if (data.success) {
+                pendingListVersion++; // invalidate in-flight polls so they can't resurrect this card
                 btn.classList.add('correct');
                 setTimeout(function() {
                     var card = document.getElementById('challenge-' + challengeId);
@@ -146,6 +159,7 @@
             method: 'POST',
             body: { challenge_id: challengeId }
         }).then(function() {
+            pendingListVersion++; // invalidate in-flight polls so they can't resurrect this card
             var card = document.getElementById('challenge-' + challengeId);
             if (card) card.remove();
             checkEmpty();
