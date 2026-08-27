@@ -48,7 +48,28 @@ if (!empty($_SESSION['ea_totp_pending'])) {
 
 $h = function($s) { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); };
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error)) {
+// A separate token from the post-login $_SESSION['csrf_token'] api.php
+// checks (that one doesn't exist yet -- there's no authenticated session at
+// this point). Generated once per PHP session and reused across the
+// password step and the TOTP step that follows it in the same session,
+// rather than regenerated on every load, so a slow-typing user or a page
+// left open through the TOTP redirect doesn't get a stale-token error.
+if (empty($_SESSION['login_csrf'])) {
+    $_SESSION['login_csrf'] = bin2hex(random_bytes(32));
+}
+$loginCsrf = $_SESSION['login_csrf'];
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error) &&
+    !hash_equals($loginCsrf, $_POST['csrf_token'] ?? '')) {
+    // Without a login CSRF token, a third-party page can silently submit
+    // this form with attacker-chosen credentials, logging the victim into
+    // the attacker's account (a well-known "login CSRF" -- useful for
+    // tracking a victim's activity under an account the attacker controls,
+    // among other tricks). Rejected before touching the rate limiter or
+    // any credential check: a mismatch here is a stale/missing token, not
+    // a guessed password, and shouldn't cost the real user an attempt.
+    $error = 'Your session expired. Please try again.';
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error)) {
     $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 
     if ($totpStep) {
@@ -59,7 +80,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error)) {
         $rateKey = "totp:{$ip}";
         $rateConfig = $config->get('rate_totp', [5, 900]);
 
-        if (!RateLimit::check($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
+        // attempt() both records this attempt and reports whether it's
+        // still within budget, atomically -- see RateLimit::attempt() for
+        // why that has to be one step rather than a separate check first.
+        if (!RateLimit::attempt($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
             $remaining = RateLimit::getRemainingSeconds($config, $rateKey, $rateConfig[1]);
             $minutes = (int) ceil($remaining / 60);
             $error = "Too many attempts. Try again in {$minutes} minute(s).";
@@ -90,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error)) {
                     header('Location: dashboard.php');
                     exit;
                 } else {
-                    RateLimit::increment($config, $rateKey, $rateConfig[1]);
+                    // Already recorded by attempt() above.
                     sleep(1);
                     $error = 'Invalid code. Enter your 6-digit TOTP code or 8-digit backup code.';
                 }
@@ -104,7 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error)) {
         $rateKey = "login:{$ip}";
         $rateConfig = $config->get('rate_login', [5, 900]);
 
-        if (!RateLimit::check($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
+        if (!RateLimit::attempt($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
             $remaining = RateLimit::getRemainingSeconds($config, $rateKey, $rateConfig[1]);
             $minutes = (int) ceil($remaining / 60);
             $error = "Too many attempts. Try again in {$minutes} minute(s).";
@@ -124,7 +148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error)) {
                     exit;
                 }
             } else {
-                RateLimit::increment($config, $rateKey, $rateConfig[1]);
+                // Already recorded by attempt() above.
                 sleep(1);
                 $error = 'Invalid username/email or password.';
                 if ($user) {
@@ -160,6 +184,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error)) {
 
   <?php if ($totpStep): ?>
   <form method="post" action="login.php" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="<?= $h($loginCsrf) ?>">
     <label for="totp_code">Verification Code</label>
     <input type="text" id="totp_code" name="totp_code" inputmode="numeric" pattern="[0-9]*"
            placeholder="6-digit TOTP or 8-digit backup" maxlength="8" autofocus autocomplete="one-time-code">
@@ -169,6 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error)) {
   </form>
   <?php else: ?>
   <form method="post" action="login.php">
+    <input type="hidden" name="csrf_token" value="<?= $h($loginCsrf) ?>">
     <label for="login">Username or Email</label>
     <input type="text" id="login" name="login" value="<?= $h($_POST['login'] ?? '') ?>" required autofocus autocomplete="username">
 

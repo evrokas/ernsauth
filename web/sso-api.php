@@ -65,10 +65,11 @@ switch ($action) {
         // Rate limit
         $rateKey = "challenge:{$appId}:{$ip}";
         $rateConfig = $config->get('rate_challenge', [30, 300]);
-        if (!RateLimit::check($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
+        // attempt() records this attempt and reports whether it's
+        // still within budget in one atomic step -- see RateLimit::attempt().
+        if (!RateLimit::attempt($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
             jsonError('Rate limited. Try again later.', 429);
         }
-        RateLimit::increment($config, $rateKey, $rateConfig[1]);
 
         $clientIp = $input['client_ip'] ?? $ip;
         $clientUa = $input['client_user_agent'] ?? '';
@@ -88,12 +89,13 @@ switch ($action) {
         // Rate limit polling
         $rateKey = "poll:{$ip}";
         $rateConfig = $config->get('rate_challenge', [30, 300]);
-        if (!RateLimit::check($config, $rateKey, $rateConfig[0] * 10, $rateConfig[1])) {
+        // attempt() records this attempt and reports whether it's
+        // still within budget in one atomic step -- see RateLimit::attempt().
+        if (!RateLimit::attempt($config, $rateKey, $rateConfig[0] * 10, $rateConfig[1])) {
             jsonError('Rate limited', 429);
         }
-        RateLimit::increment($config, $rateKey, $rateConfig[1]);
 
-        $result = SSO::pollChallenge($config, $challengeId);
+        $result = SSO::pollChallenge($config, $challengeId, $appId);
         jsonOut($result);
 
     case 'exchange_code':
@@ -102,7 +104,7 @@ switch ($action) {
         $authCode = $input['auth_code'] ?? '';
         if (empty($authCode)) jsonError('auth_code required');
 
-        $result = SSO::exchangeCode($config, $authCode);
+        $result = SSO::exchangeCode($config, $authCode, $appId);
         if (isset($result['error'])) {
             jsonError($result['error']);
         }
@@ -121,10 +123,11 @@ switch ($action) {
         // Rate limit
         $rateKey = "otp_send:{$ip}";
         $rateConfig = $config->get('rate_otp_send', [3, 900]);
-        if (!RateLimit::check($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
+        // attempt() records this attempt and reports whether it's
+        // still within budget in one atomic step -- see RateLimit::attempt().
+        if (!RateLimit::attempt($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
             jsonError('Too many OTP requests. Try again later.', 429);
         }
-        RateLimit::increment($config, $rateKey, $rateConfig[1]);
 
         $user = $config->getUserByEmail($email);
         if (!$user || !$user['active']) {
@@ -151,10 +154,11 @@ switch ($action) {
         // Rate limit
         $rateKey = "otp_verify:{$ip}";
         $rateConfig = $config->get('rate_otp_verify', [5, 900]);
-        if (!RateLimit::check($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
+        // attempt() records this attempt and reports whether it's
+        // still within budget in one atomic step -- see RateLimit::attempt().
+        if (!RateLimit::attempt($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
             jsonError('Too many attempts. Try again later.', 429);
         }
-        RateLimit::increment($config, $rateKey, $rateConfig[1]);
 
         $otp = $config->verifyOtp($otpId, $code, 'login');
         if (!$otp) {
@@ -185,10 +189,11 @@ switch ($action) {
         // Rate limit
         $rateKey = "reset:{$ip}";
         $rateConfig = $config->get('rate_reset', [3, 3600]);
-        if (!RateLimit::check($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
+        // attempt() records this attempt and reports whether it's
+        // still within budget in one atomic step -- see RateLimit::attempt().
+        if (!RateLimit::attempt($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
             jsonError('Too many requests. Try again later.', 429);
         }
-        RateLimit::increment($config, $rateKey, $rateConfig[1]);
 
         // Always return success to prevent email enumeration
         $user = $config->getUserByEmail($email);
@@ -211,17 +216,18 @@ switch ($action) {
         if (empty($email) || empty($code) || empty($newPass)) {
             jsonError('All fields required');
         }
-        if (strlen($newPass) < 8) {
-            jsonError('Password must be at least 8 characters');
+        if (strlen($newPass) < 12) {
+            jsonError('Password must be at least 12 characters');
         }
 
         // Rate limit
         $rateKey = "reset_verify:{$ip}";
         $rateConfig = $config->get('rate_otp_verify', [5, 900]);
-        if (!RateLimit::check($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
+        // attempt() records this attempt and reports whether it's
+        // still within budget in one atomic step -- see RateLimit::attempt().
+        if (!RateLimit::attempt($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
             jsonError('Too many attempts', 429);
         }
-        RateLimit::increment($config, $rateKey, $rateConfig[1]);
 
         // Find a valid OTP for this email
         $st = $config->db()->prepare(
@@ -245,6 +251,13 @@ switch ($action) {
         $config->updateUser($user['id'], [
             'password_hash' => password_hash($newPass, PASSWORD_DEFAULT),
         ]);
+
+        // A password reset is often done *because* the old password (or a
+        // stolen session) is suspected compromised -- so any session that
+        // already exists shouldn't survive it. There's no "current session"
+        // to exclude here: this is an unauthenticated reset flow, done by
+        // email code, not from an existing logged-in session.
+        $config->deleteUserSessions($user['id']);
 
         RateLimit::reset($config, $rateKey);
         AuditLog::log($config, 'password_reset', $user['id']);

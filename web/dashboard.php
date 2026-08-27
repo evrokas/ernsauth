@@ -92,11 +92,11 @@ $h = function($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
       </div>
       <div class="form-group">
         <label for="new-pass">New Password</label>
-        <input type="password" id="new-pass" minlength="8">
+        <input type="password" id="new-pass" minlength="12">
       </div>
       <div class="form-group">
         <label for="confirm-pass">Confirm New Password</label>
-        <input type="password" id="confirm-pass" minlength="8">
+        <input type="password" id="confirm-pass" minlength="12">
       </div>
       <button class="btn btn-primary" id="btn-change-pass">Change Password</button>
     </div>

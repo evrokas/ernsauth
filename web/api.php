@@ -120,7 +120,13 @@ switch ($action) {
         if ($sessionId === ($_SESSION['ea_session_id'] ?? '')) {
             jsonError('Cannot revoke current session');
         }
-        $config->deleteSession($sessionId);
+        // Ownership-checked delete -- a bare deleteSession($sessionId) would
+        // let any logged-in user delete any OTHER user's session by ID.
+        // Session IDs are 256-bit random and not practically guessable, but
+        // this shouldn't be the only thing stopping that.
+        if (!$config->deleteSessionForUser($sessionId, $userId)) {
+            jsonError('Session not found');
+        }
         jsonOut(['success' => true]);
 
     case 'revoke_all_sessions':
@@ -151,8 +157,8 @@ switch ($action) {
         if ($newPass !== $confirm) {
             jsonError('Passwords do not match');
         }
-        if (strlen($newPass) < 8) {
-            jsonError('Password must be at least 8 characters');
+        if (strlen($newPass) < 12) {
+            jsonError('Password must be at least 12 characters');
         }
 
         $fullUser = $config->getUserById($userId);
@@ -163,6 +169,11 @@ switch ($action) {
         $config->updateUser($userId, [
             'password_hash' => password_hash($newPass, PASSWORD_DEFAULT),
         ]);
+        // Log out every other session -- the one making this request stays
+        // logged in (the user just proved they know the current password),
+        // but a password change should not leave a stolen session anywhere
+        // else still valid.
+        $config->deleteUserSessions($userId, $_SESSION['ea_session_id'] ?? null);
         AuditLog::log($config, 'password_change', $userId);
         jsonOut(['success' => true]);
 
@@ -291,15 +302,21 @@ switch ($action) {
                 'is_admin'     => $isAdmin,
             ];
             if (!empty($password)) {
-                if (strlen($password) < 8) jsonError('Password must be at least 8 characters');
+                if (strlen($password) < 12) jsonError('Password must be at least 12 characters');
                 $updates['password_hash'] = password_hash($password, PASSWORD_DEFAULT);
             }
             $config->updateUser($uid, $updates);
+            // An admin resetting someone else's password is exactly the
+            // "I think this account is compromised" case a session wipe is
+            // for -- there's no session of the admin's own to preserve here.
+            if (!empty($password)) {
+                $config->deleteUserSessions($uid);
+            }
             jsonOut(['success' => true, 'user_id' => $uid]);
         } else {
             // Create
-            if (empty($password) || strlen($password) < 8) {
-                jsonError('Password must be at least 8 characters');
+            if (empty($password) || strlen($password) < 12) {
+                jsonError('Password must be at least 12 characters');
             }
             $newId = $config->createUser([
                 'username'      => $username,

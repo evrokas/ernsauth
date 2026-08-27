@@ -193,6 +193,24 @@ class Config
         $this->db->prepare("DELETE FROM sessions WHERE id = :id")->execute([':id' => $id]);
     }
 
+    /**
+     * Same as deleteSession(), but only when the session actually belongs
+     * to $userId. Use this for any deletion driven by a session ID the
+     * caller supplied (e.g. the "revoke a device" button) rather than one
+     * this app itself looked up from the caller's own cookie -- session
+     * IDs are 256-bit random and not practically guessable, but the code
+     * shouldn't rely on that alone as the only thing stopping one logged-in
+     * user from deleting another user's session. Returns whether a row was
+     * actually deleted, so the caller can tell "not yours" from "not found"
+     * without the two being distinguishable to the client either way.
+     */
+    public function deleteSessionForUser(string $id, string $userId): bool
+    {
+        $st = $this->db->prepare("DELETE FROM sessions WHERE id = :id AND user_id = :uid");
+        $st->execute([':id' => $id, ':uid' => $userId]);
+        return $st->rowCount() > 0;
+    }
+
     public function deleteUserSessions(string $userId, ?string $exceptId = null): int
     {
         if ($exceptId) {

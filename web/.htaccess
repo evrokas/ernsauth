@@ -10,7 +10,17 @@ DirectoryIndex index.php
     Require all denied
 </FilesMatch>
 
-# Force HTTPS (uncomment if needed)
-# RewriteEngine On
-# RewriteCond %{HTTPS} off
-# RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+# Force HTTPS. This is an auth gateway -- passwords, session tokens and
+# TOTP/backup codes must never go over the wire in cleartext, so this is
+# enabled by default rather than left as an opt-in a deployer has to
+# remember. Checks both %{HTTPS} (a direct TLS connection to Apache) and
+# X-Forwarded-Proto (TLS terminated by a reverse proxy in front of Apache,
+# the same signal Auth::isSecure() already trusts for the cookie Secure
+# flag) so this doesn't redirect-loop behind a proxy that terminates TLS
+# but talks plain HTTP to this backend.
+#
+# Only disable this for local HTTP-only development -- never in production.
+RewriteEngine On
+RewriteCond %{HTTPS} off
+RewriteCond %{HTTP:X-Forwarded-Proto} !https
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
