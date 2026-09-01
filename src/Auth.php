@@ -69,7 +69,7 @@ class Auth
         }
     }
 
-    public static function login(Config $config, array $user): void
+    public static function login(Config $config, array $user, bool $remember = false): void
     {
         session_regenerate_id(true);
 
@@ -84,6 +84,14 @@ class Auth
         ];
         $_SESSION['ea_authed'] = true;
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+
+        // Without "remember me", the PHP session above is the whole story:
+        // its cookie has lifetime=0 (browser-session only, see startSession()),
+        // so closing the browser ends the login. No DB session row and no
+        // ea_session cookie means checkCookie() has nothing to revive later.
+        if (!$remember) {
+            return;
+        }
 
         // Create persistent session with cookie
         $token = bin2hex(random_bytes(32));

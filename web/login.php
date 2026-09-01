@@ -36,7 +36,7 @@ if (isset($_GET['logout']) && !empty($config)) {
 
 // Cancel TOTP step
 if (isset($_GET['cancel_totp'])) {
-    unset($_SESSION['ea_totp_pending']);
+    unset($_SESSION['ea_totp_pending'], $_SESSION['ea_remember_pending']);
     header('Location: login.php');
     exit;
 }
@@ -107,8 +107,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error) &&
                 }
 
                 if ($verified) {
-                    unset($_SESSION['ea_totp_pending']);
-                    Auth::login($config, $user);
+                    $remember = !empty($_SESSION['ea_remember_pending']);
+                    unset($_SESSION['ea_totp_pending'], $_SESSION['ea_remember_pending']);
+                    Auth::login($config, $user, $remember);
                     RateLimit::reset($config, $rateKey);
                     AuditLog::log($config, 'login', $user['id']);
                     header('Location: dashboard.php');
@@ -124,6 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error) &&
         // Password step
         $login    = trim($_POST['login'] ?? '');
         $password = $_POST['password'] ?? '';
+        $remember = !empty($_POST['remember_me']);
 
         $rateKey = "login:{$ip}";
         $rateConfig = $config->get('rate_login', [5, 900]);
@@ -139,9 +141,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error) &&
             if ($user && $user['active'] && password_verify($password, $user['password_hash'])) {
                 if ($user['totp_enabled']) {
                     $_SESSION['ea_totp_pending'] = $user['id'];
+                    // Carried across to the TOTP step below, since the
+                    // checkbox itself only exists on this password form --
+                    // Auth::login() isn't called until TOTP succeeds.
+                    $_SESSION['ea_remember_pending'] = $remember;
                     $totpStep = true;
                 } else {
-                    Auth::login($config, $user);
+                    Auth::login($config, $user, $remember);
                     RateLimit::reset($config, $rateKey);
                     AuditLog::log($config, 'login', $user['id']);
                     header('Location: dashboard.php');
@@ -200,6 +206,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error) &&
 
     <label for="password">Password</label>
     <input type="password" id="password" name="password" required autocomplete="current-password">
+
+    <label class="checkbox-label">
+      <input type="checkbox" id="remember_me" name="remember_me" value="1" <?= !empty($_POST['remember_me']) ? 'checked' : '' ?>>
+      Remember me for 30 days
+    </label>
 
     <button type="submit">Sign In</button>
   </form>
