@@ -6,6 +6,24 @@ class Config
     private PDO $db;
     private array $deployConfig;
 
+    // Every throttle applied to a client-facing request, in one place: what
+    // RateLimit::attempt() is called with, [max attempts, window seconds].
+    // This is the allowlist for getRateLimit()/setRateLimit() -- an admin
+    // can retune any of these live (see the dashboard's Admin > Rate Limits
+    // tab), but can't invent a new, unvetted key through that API. Label is
+    // shown there; default is what applies until a row exists in `settings`
+    // for it (config/settings.php's rate_* values are the old, deploy-only
+    // way to set these and still work as the fallback beneath that).
+    public const RATE_LIMIT_KEYS = [
+        'rate_login'      => ['label' => 'Password login attempts',        'default' => [5, 900]],
+        'rate_totp'       => ['label' => 'TOTP code verification',        'default' => [5, 900]],
+        'rate_otp_send'   => ['label' => 'Email OTP send requests',       'default' => [3, 900]],
+        'rate_otp_verify' => ['label' => 'Email OTP / reset-code verification', 'default' => [5, 900]],
+        'rate_challenge'  => ['label' => 'SSO challenge create (client apps)', 'default' => [30, 300]],
+        'rate_reset'      => ['label' => 'Password reset requests',       'default' => [3, 3600]],
+        'rate_exchange'   => ['label' => 'SSO auth code exchange (client apps)', 'default' => [20, 300]],
+    ];
+
     private function __construct()
     {
         $file = dirname(__DIR__) . '/config/settings.php';
@@ -70,6 +88,71 @@ class Config
              ON DUPLICATE KEY UPDATE setting_value = :v2"
         );
         $st->execute([':k' => $key, ':v' => $value, ':v2' => $value]);
+    }
+
+    public function deleteSetting(string $key): void
+    {
+        $this->db->prepare("DELETE FROM settings WHERE setting_key = :k")->execute([':k' => $key]);
+    }
+
+    // ── Rate limits (customizable throttles) ──────────────────────────────
+    //
+    // [max attempts, window seconds], same shape RateLimit::attempt() takes.
+    // An admin-set value lives in the `settings` table under "rate_limit:
+    // {$key}" as JSON (e.g. "[30,300]"); getRateLimit() prefers that, then
+    // falls back to config/settings.php's own rate_* entry (the pre-existing,
+    // deploy-only way to set these), then to the hardcoded default in
+    // RATE_LIMIT_KEYS. $key must be one of RATE_LIMIT_KEYS -- callers pass a
+    // literal, not user input, so an unknown key is a programming error, not
+    // something to degrade gracefully for.
+
+    public function getRateLimit(string $key): array
+    {
+        if (!isset(self::RATE_LIMIT_KEYS[$key])) {
+            throw new InvalidArgumentException("Unknown rate limit key: {$key}");
+        }
+
+        $stored = $this->getSetting("rate_limit:{$key}");
+        if ($stored !== null) {
+            $decoded = json_decode($stored, true);
+            if (is_array($decoded) && count($decoded) === 2
+                && is_int($decoded[0]) && $decoded[0] > 0
+                && is_int($decoded[1]) && $decoded[1] > 0) {
+                return $decoded;
+            }
+            // A malformed/tampered row shouldn't take the throttle out
+            // entirely -- fall through to the deploy-file/hardcoded default
+            // exactly as if no override existed.
+        }
+
+        return $this->get($key, self::RATE_LIMIT_KEYS[$key]['default']);
+    }
+
+    public function setRateLimit(string $key, int $maxAttempts, int $windowSeconds): void
+    {
+        if (!isset(self::RATE_LIMIT_KEYS[$key])) {
+            throw new InvalidArgumentException("Unknown rate limit key: {$key}");
+        }
+        if ($maxAttempts < 1 || $windowSeconds < 1) {
+            throw new InvalidArgumentException('Max attempts and window must be positive integers');
+        }
+        $this->setSetting("rate_limit:{$key}", json_encode([$maxAttempts, $windowSeconds]));
+    }
+
+    // Whether getRateLimit($key) is currently returning an admin override
+    // rather than the deploy-file/hardcoded default -- purely for the
+    // dashboard to show "customized" vs "default" next to each row.
+    public function hasRateLimitOverride(string $key): bool
+    {
+        return $this->getSetting("rate_limit:{$key}") !== null;
+    }
+
+    public function resetRateLimit(string $key): void
+    {
+        if (!isset(self::RATE_LIMIT_KEYS[$key])) {
+            throw new InvalidArgumentException("Unknown rate limit key: {$key}");
+        }
+        $this->deleteSetting("rate_limit:{$key}");
     }
 
     // ── User methods ────────────────────────────────────────────────────────

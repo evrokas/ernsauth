@@ -64,7 +64,7 @@ switch ($action) {
 
         // Rate limit
         $rateKey = "challenge:{$appId}:{$ip}";
-        $rateConfig = $config->get('rate_challenge', [30, 300]);
+        $rateConfig = $config->getRateLimit('rate_challenge');
         // attempt() records this attempt and reports whether it's
         // still within budget in one atomic step -- see RateLimit::attempt().
         if (!RateLimit::attempt($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
@@ -94,7 +94,7 @@ switch ($action) {
 
         // Rate limit polling
         $rateKey = "poll:{$ip}";
-        $rateConfig = $config->get('rate_challenge', [30, 300]);
+        $rateConfig = $config->getRateLimit('rate_challenge');
         // attempt() records this attempt and reports whether it's
         // still within budget in one atomic step -- see RateLimit::attempt().
         if (!RateLimit::attempt($config, $rateKey, $rateConfig[0] * 10, $rateConfig[1])) {
@@ -109,6 +109,17 @@ switch ($action) {
 
         $authCode = $input['auth_code'] ?? '';
         if (empty($authCode)) jsonError('auth_code required');
+
+        // Rate limit -- this was the one client-facing SSO action with no
+        // throttle at all. The code itself is 128-bit random and single-use
+        // (see SSO::exchangeCode()'s own row-locked nullify), so guessing it
+        // is impractical regardless; this is defense in depth, not the only
+        // thing standing in the way.
+        $rateKey = "exchange:{$appId}:{$ip}";
+        $rateConfig = $config->getRateLimit('rate_exchange');
+        if (!RateLimit::attempt($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
+            jsonError('Rate limited. Try again later.', 429);
+        }
 
         $result = SSO::exchangeCode($config, $authCode, $appId);
         if (isset($result['error'])) {
@@ -128,7 +139,7 @@ switch ($action) {
 
         // Rate limit
         $rateKey = "otp_send:{$ip}";
-        $rateConfig = $config->get('rate_otp_send', [3, 900]);
+        $rateConfig = $config->getRateLimit('rate_otp_send');
         // attempt() records this attempt and reports whether it's
         // still within budget in one atomic step -- see RateLimit::attempt().
         if (!RateLimit::attempt($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
@@ -159,7 +170,7 @@ switch ($action) {
 
         // Rate limit
         $rateKey = "otp_verify:{$ip}";
-        $rateConfig = $config->get('rate_otp_verify', [5, 900]);
+        $rateConfig = $config->getRateLimit('rate_otp_verify');
         // attempt() records this attempt and reports whether it's
         // still within budget in one atomic step -- see RateLimit::attempt().
         if (!RateLimit::attempt($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
@@ -194,7 +205,7 @@ switch ($action) {
 
         // Rate limit
         $rateKey = "reset:{$ip}";
-        $rateConfig = $config->get('rate_reset', [3, 3600]);
+        $rateConfig = $config->getRateLimit('rate_reset');
         // attempt() records this attempt and reports whether it's
         // still within budget in one atomic step -- see RateLimit::attempt().
         if (!RateLimit::attempt($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
@@ -228,7 +239,7 @@ switch ($action) {
 
         // Rate limit
         $rateKey = "reset_verify:{$ip}";
-        $rateConfig = $config->get('rate_otp_verify', [5, 900]);
+        $rateConfig = $config->getRateLimit('rate_otp_verify');
         // attempt() records this attempt and reports whether it's
         // still within budget in one atomic step -- see RateLimit::attempt().
         if (!RateLimit::attempt($config, $rateKey, $rateConfig[0], $rateConfig[1])) {

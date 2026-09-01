@@ -337,6 +337,7 @@
         var id = activePanel.id;
         if (id === 'admin-apps') loadClientApps();
         else if (id === 'admin-users') loadUsers();
+        else if (id === 'admin-ratelimits') loadRateLimits();
         else if (id === 'admin-audit') loadAuditLog();
     }
 
@@ -442,6 +443,64 @@
                     });
                 };
             }
+        });
+    }
+
+    // Rate Limits
+    function loadRateLimits() {
+        api('get_rate_limits').then(function(data) {
+            var container = document.getElementById('ratelimits-table');
+            if (!data.limits || data.limits.length === 0) {
+                container.innerHTML = '<div class="empty-state">No rate limits defined</div>';
+                return;
+            }
+            var html = '<table><thead><tr><th>Throttle</th><th>Max attempts</th><th>Window (seconds)</th><th></th><th></th></tr></thead><tbody>';
+            data.limits.forEach(function(limit) {
+                html += '<tr data-key="' + h(limit.key) + '">';
+                html += '<td>' + h(limit.label) + '<br><span style="font-size:11px;color:#64748b">' + h(limit.key) + '</span></td>';
+                html += '<td><input type="number" min="1" max="100000" class="rl-max" value="' + h(limit.max_attempts) + '" style="width:90px"></td>';
+                html += '<td><input type="number" min="1" max="604800" class="rl-window" value="' + h(limit.window_seconds) + '" style="width:100px"></td>';
+                html += '<td>' + (limit.is_customized
+                    ? '<span class="badge badge-green">Customized</span>'
+                    : '<span class="badge badge-blue">Default</span>') + '</td>';
+                html += '<td>';
+                html += '<button class="btn btn-primary btn-sm rl-save">Save</button> ';
+                if (limit.is_customized) {
+                    html += '<button class="btn btn-ghost btn-sm rl-reset">Reset</button>';
+                }
+                html += '</td></tr>';
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+
+            container.querySelectorAll('.rl-save').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var row = this.closest('tr');
+                    var key = row.dataset.key;
+                    var maxAttempts = parseInt(row.querySelector('.rl-max').value, 10);
+                    var windowSeconds = parseInt(row.querySelector('.rl-window').value, 10);
+                    if (!maxAttempts || !windowSeconds || maxAttempts < 1 || windowSeconds < 1) {
+                        alert('Max attempts and window must be positive numbers');
+                        return;
+                    }
+                    api('save_rate_limit', {
+                        method: 'POST',
+                        body: { key: key, max_attempts: maxAttempts, window_seconds: windowSeconds }
+                    }).then(function(data) {
+                        if (data.error) { alert(data.error); return; }
+                        loadRateLimits();
+                    });
+                });
+            });
+            container.querySelectorAll('.rl-reset').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var row = this.closest('tr');
+                    var key = row.dataset.key;
+                    if (!confirm('Reset "' + key + '" to its default?')) return;
+                    api('reset_rate_limit', { method: 'POST', body: { key: key } })
+                        .then(function() { loadRateLimits(); });
+                });
+            });
         });
     }
 

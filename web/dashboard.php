@@ -109,6 +109,7 @@ $h = function($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
     <div style="display:flex;gap:12px;margin-bottom:20px">
       <button class="btn btn-ghost admin-subtab active" data-subtab="apps">Client Apps</button>
       <button class="btn btn-ghost admin-subtab" data-subtab="users">Users</button>
+      <button class="btn btn-ghost admin-subtab" data-subtab="ratelimits">Rate Limits</button>
       <button class="btn btn-ghost admin-subtab" data-subtab="audit">Audit Log</button>
     </div>
 
@@ -133,6 +134,23 @@ $h = function($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
           <button class="btn btn-primary btn-sm" id="btn-add-user">Add User</button>
         </div>
         <div class="table-wrap" id="users-table">
+          <div class="empty-state"><span class="spinner"></span> Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rate Limits -->
+    <div class="admin-panel" id="admin-ratelimits">
+      <div class="card">
+        <div class="card-title">Rate Limits</div>
+        <p style="font-size:13px;color:#64748b;margin-bottom:16px">
+          Throttles applied to client-facing requests -- SSO challenge creation
+          and code exchange from integrating apps, plus password/OTP/TOTP
+          attempts. Each is "max attempts" within a rolling "window" of
+          seconds. A customized row overrides config/settings.php's default
+          until reset.
+        </p>
+        <div class="table-wrap" id="ratelimits-table">
           <div class="empty-state"><span class="spinner"></span> Loading...</div>
         </div>
       </div>

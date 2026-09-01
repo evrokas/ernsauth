@@ -53,7 +53,8 @@ if ($method === 'POST') {
 }
 
 $adminActions = ['get_client_apps', 'save_client_app', 'delete_client_app',
-                 'get_users', 'save_user', 'toggle_user', 'audit_log', 'cleanup'];
+                 'get_users', 'save_user', 'toggle_user', 'audit_log', 'cleanup',
+                 'get_rate_limits', 'save_rate_limit', 'reset_rate_limit'];
 if (in_array($action, $adminActions) && !Auth::isAdmin()) {
     jsonError('Admin access required', 403);
 }
@@ -274,6 +275,53 @@ switch ($action) {
         if (empty($appId)) jsonError('ID required');
         $config->deleteClientApp($appId);
         AuditLog::log($config, 'app_deleted', $userId, ['app_id' => $appId]);
+        jsonOut(['success' => true]);
+
+    // ── Admin: Rate limits (throttles on client-facing requests) ──────────
+
+    case 'get_rate_limits':
+        $limits = [];
+        foreach (Config::RATE_LIMIT_KEYS as $key => $meta) {
+            [$maxAttempts, $windowSeconds] = $config->getRateLimit($key);
+            $limits[] = [
+                'key'             => $key,
+                'label'           => $meta['label'],
+                'max_attempts'    => $maxAttempts,
+                'window_seconds'  => $windowSeconds,
+                'default'         => $meta['default'],
+                'is_customized'   => $config->hasRateLimitOverride($key),
+            ];
+        }
+        jsonOut(['limits' => $limits]);
+
+    case 'save_rate_limit':
+        $key = $input['key'] ?? '';
+        $maxAttempts = (int)($input['max_attempts'] ?? 0);
+        $windowSeconds = (int)($input['window_seconds'] ?? 0);
+
+        if (!array_key_exists($key, Config::RATE_LIMIT_KEYS)) {
+            jsonError('Unknown rate limit key');
+        }
+        // Same floor as Config::setRateLimit()'s own guard, checked here
+        // too so the error message is specific rather than a generic 500
+        // from the thrown InvalidArgumentException.
+        if ($maxAttempts < 1 || $maxAttempts > 100000 || $windowSeconds < 1 || $windowSeconds > 604800) {
+            jsonError('Max attempts must be 1-100000 and window 1 second-7 days');
+        }
+
+        $config->setRateLimit($key, $maxAttempts, $windowSeconds);
+        AuditLog::log($config, 'rate_limit_changed', $userId, [
+            'key' => $key, 'max_attempts' => $maxAttempts, 'window_seconds' => $windowSeconds,
+        ]);
+        jsonOut(['success' => true]);
+
+    case 'reset_rate_limit':
+        $key = $input['key'] ?? '';
+        if (!array_key_exists($key, Config::RATE_LIMIT_KEYS)) {
+            jsonError('Unknown rate limit key');
+        }
+        $config->resetRateLimit($key);
+        AuditLog::log($config, 'rate_limit_reset', $userId, ['key' => $key]);
         jsonOut(['success' => true]);
 
     // ── Admin: Users ──────────────────────────────────────────────────────

@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error) &&
         $userId = $_SESSION['ea_totp_pending'];
 
         $rateKey = "totp:{$ip}";
-        $rateConfig = $config->get('rate_totp', [5, 900]);
+        $rateConfig = $config->getRateLimit('rate_totp');
 
         // attempt() both records this attempt and reports whether it's
         // still within budget, atomically -- see RateLimit::attempt() for
@@ -132,7 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error) &&
         $remember = !empty($_POST['remember_me']);
 
         $rateKey = "login:{$ip}";
-        $rateConfig = $config->get('rate_login', [5, 900]);
+        $rateConfig = $config->getRateLimit('rate_login');
 
         if (!RateLimit::attempt($config, $rateKey, $rateConfig[0], $rateConfig[1])) {
             $remaining = RateLimit::getRemainingSeconds($config, $rateKey, $rateConfig[1]);
