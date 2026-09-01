@@ -18,6 +18,17 @@ try {
 
 Auth::startSession();
 
+// Logout -- must run before the "already logged in" check below: the Sign
+// Out link only ever gets clicked while ea_authed is still true, so if that
+// redirect ran first it would always win and Auth::logout() would never be
+// reached at all (this was the exact bug: clicking Sign Out silently bounced
+// straight back to the dashboard without clearing the session or cookie).
+if (isset($_GET['logout']) && !empty($config)) {
+    Auth::logout($config);
+    header('Location: login.php');
+    exit;
+}
+
 // Already logged in
 if (!empty($_SESSION['ea_authed'])) {
     header('Location: dashboard.php');
@@ -26,13 +37,6 @@ if (!empty($_SESSION['ea_authed'])) {
 
 // Setup message
 $setupSuccess = !empty($_GET['setup']);
-
-// Logout
-if (isset($_GET['logout']) && !empty($config)) {
-    Auth::logout($config);
-    header('Location: login.php');
-    exit;
-}
 
 // Cancel TOTP step
 if (isset($_GET['cancel_totp'])) {
