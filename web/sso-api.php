@@ -78,6 +78,12 @@ switch ($action) {
         AuditLog::log($config, 'sso_challenge_created', null, [
             'app_id' => $appId, 'challenge_id' => $result['challenge_id']
         ]);
+        if ($result['superseded_count'] > 0) {
+            AuditLog::log($config, 'sso_challenge_superseded', null, [
+                'app_id' => $appId, 'challenge_id' => $result['challenge_id'],
+                'superseded_count' => $result['superseded_count'],
+            ]);
+        }
         jsonOut($result);
 
     case 'poll_challenge':

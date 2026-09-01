@@ -4,6 +4,35 @@ class SSO
 {
     public static function createChallenge(Config $config, string $clientAppId, string $clientIp, string $clientUa): array
     {
+        // A browser starting a new challenge -- whether a normal page load,
+        // a tab it left open and reloaded, or an explicit "new request"
+        // click after losing sync -- means any challenge it created earlier
+        // is stale and will never be approved; the user has moved on. Left
+        // alone, a stale-but-still-pending row sits in the approver's
+        // Pending Logins list indistinguishable from the live one among the
+        // decoy numbers until it naturally expires (challenge_ttl), which is
+        // exactly the "lost sync" scenario this is fixing. Superseding here
+        // -- unconditionally, on every create, not just a manual retry --
+        // keeps at most one pending challenge per (app, IP, user agent).
+        // Scoped to that triple rather than just client_app_id so a second
+        // person on the same app from a different device isn't affected;
+        // client_ip alone can occasionally collide (NAT/shared network) with
+        // a different person's own still-pending attempt, but the worst case
+        // is that unapproved attempt has to retry -- not a security issue.
+        $superseded = 0;
+        if ($clientIp !== '') {
+            $st = $config->db()->prepare(
+                "UPDATE sso_challenges
+                    SET status = 'expired'
+                  WHERE status = 'pending'
+                    AND client_app_id = :app_id
+                    AND client_ip = :ip
+                    AND client_user_agent = :ua"
+            );
+            $st->execute([':app_id' => $clientAppId, ':ip' => $clientIp, ':ua' => $clientUa]);
+            $superseded = $st->rowCount();
+        }
+
         $id = bin2hex(random_bytes(16));
         $number = random_int(10, 99);
         $now = time();
@@ -27,6 +56,7 @@ class SSO
             'challenge_id'     => $id,
             'challenge_number' => $number,
             'expires_at'       => $expiresAt,
+            'superseded_count' => $superseded,
         ];
     }
 
