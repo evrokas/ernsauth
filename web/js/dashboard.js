@@ -111,24 +111,34 @@
                 return;
             }
 
+            // Client-side convenience only -- lets a mismatched card be
+            // greyed out before anyone taps a number, so a mis-click never
+            // even reaches the network. The real check is server-side in
+            // approveChallenge(), which never trusts this comparison.
+            var you = data.you || null;
+
             var html = '';
             data.challenges.forEach(function(ch) {
-                html += '<div class="challenge-card" id="challenge-' + h(ch.id) + '">';
+                var mismatch = !!(you && ch.requested_identity && ch.requested_identity.toLowerCase() !== you.toLowerCase());
+                html += '<div class="challenge-card' + (mismatch ? ' challenge-mismatch' : '') + '" id="challenge-' + h(ch.id) + '">';
                 html += '<div class="challenge-header">';
                 html += '<span class="challenge-emoji">' + h(ch.app_emoji || '') + '</span>';
                 html += '<span class="challenge-app">' + h(ch.app_label) + '</span>';
                 html += '</div>';
                 html += '<div class="challenge-meta">From ' + h(ch.client_ip) + ' &middot; ' + h(ch.time_ago) + '</div>';
                 if (ch.requested_identity) {
-                    // Whatever the calling app typed into its own login form
-                    // -- an unverified claim, not something ErnsAuth checked.
-                    // Shown so the approver can catch "that's not me" before
-                    // tapping a number, not treated as a fact anywhere else.
+                    // Whatever the calling app typed into its own login form.
+                    // Since 2026-09-02 this is also what ErnsAuth itself
+                    // checks server-side before letting anyone approve --
+                    // not just a claim the approver has to eyeball.
                     html += '<div class="challenge-identity">Claiming to be <strong>' + h(ch.requested_identity) + '</strong></div>';
+                }
+                if (mismatch) {
+                    html += '<div class="challenge-mismatch-note">This request isn\'t for your account -- you can\'t approve it.</div>';
                 }
                 html += '<div class="challenge-numbers">';
                 ch.numbers.forEach(function(n) {
-                    html += '<button class="number-btn" data-challenge="' + h(ch.id) + '" data-number="' + n + '">' + n + '</button>';
+                    html += '<button class="number-btn" data-challenge="' + h(ch.id) + '" data-number="' + n + '"' + (mismatch ? ' disabled' : '') + '>' + n + '</button>';
                 });
                 html += '</div>';
                 html += '<button class="btn btn-ghost btn-sm reject-btn" data-challenge="' + h(ch.id) + '">Reject</button>';
@@ -136,8 +146,9 @@
             });
             container.innerHTML = html;
 
-            // Bind number buttons
-            container.querySelectorAll('.number-btn').forEach(function(btn) {
+            // Bind number buttons (mismatched ones are rendered disabled
+            // above and never get a click handler)
+            container.querySelectorAll('.number-btn:not([disabled])').forEach(function(btn) {
                 btn.addEventListener('click', function() {
                     approveLogin(this.dataset.challenge, parseInt(this.dataset.number), this);
                 });
@@ -166,6 +177,17 @@
                     checkEmpty();
                 }, 1000);
             } else {
+                // identity_mismatch shouldn't normally reach here -- the
+                // number button is rendered disabled for a mismatched card
+                // -- but the server is the real authority, so a stale list
+                // (e.g. two tabs open) can still hit it. Distinct message
+                // rather than the generic "wrong" flash, since the number
+                // itself may well have been correct.
+                if (data.error === 'identity_mismatch') {
+                    alert('This request is for a different account than the one you are logged in as.');
+                    loadPendingLogins();
+                    return;
+                }
                 btn.classList.add('wrong');
                 setTimeout(function() { btn.classList.remove('wrong'); }, 1500);
             }

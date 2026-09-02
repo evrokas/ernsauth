@@ -262,47 +262,56 @@ unknown/inactive/locked accounts exactly as you would for a password login.
 
 **② Pin the *expected* ErnsAuth identity to the session before the challenge
 exists.** This is what step ⑥ checks against — without it there is nothing
-to compare the approver to. **Your app's usernames and ErnsAuth's usernames
-are two independent namespaces — ErnsAuth has no idea your app's `username`
-value even exists, let alone that it's supposed to mean anything on its
-side.** A naive fallback that assumes they're always spelled the same is a
-convenience for local testing, not a real mapping — the moment a real
-ErnsAuth account is named anything else (different casing, a different
-handle entirely, whatever your ErnsAuth admin actually set up), every login
-attempt for that user silently rejects at step ⑥ with no indication of
-*why*, because there is nothing wrong with the code — the assumption was
-just never true for that account. **Before shipping, confirm this fallback
-actually matches your real users' real ErnsAuth usernames, one by one — or
-better, store the real mapping explicitly** (a column on your own account
-row, filled in once per user) rather than trust a guess:
+to compare the approver to. **There is no identity-mapping table anywhere in
+this system, on either side** — not a column on your account row, not a
+lookup table on ErnsAuth. ErnsAuth has no idea your app's `username` value
+even exists as a concept, and it never will; the only rule that's actually
+enforceable without one is the direct one: **an SSO-enabled account's app
+username must be spelled identically to its ErnsAuth username.** That's not
+a fallback assumption to double-check once and hope stays true — as of
+2026-09-02, ErnsAuth **enforces it itself**, server-side, at the moment of
+approval (see ③–⑤ below): a logged-in ErnsAuth user simply cannot approve a
+challenge whose `requested_identity` doesn't match their own account's
+username, full stop. Pinning the expected identity is therefore just the
+submitted username itself — nothing to resolve, nothing to look up:
 
 ```php
 $account = my_app_lookup_user($username);   // your own users table
-$_SESSION['ea_expected_username'] = $account
-    ? ($account['ernsauth_username'] ?? $account['username'])   // explicit
-      // mapping column wins; the bare fallback to $account['username'] is
-      // a same-spelling assumption, not something ErnsAuth ever promised
-    : null;   // null on purpose -- see the enumeration row below
+$_SESSION['ea_expected_username'] = $account ? $account['username'] : null;
+    // null on purpose when the username didn't resolve -- see the
+    // enumeration row below. No separate mapping to consult: your
+    // account's username IS the identity ErnsAuth will check.
 $_SESSION['ea_pending_login'] = $account ? ['uname' => $account['username']] : null;
 ```
+
+If an ErnsAuth account is genuinely meant to sign in under a differently-spelled
+app username, there is no supported way to express that short of renaming
+one side to match the other — a deliberate constraint, not a gap: the
+alternative is a mapping table living somewhere, and both this app and
+ErnsAuth have already decided that data doesn't belong in either database.
 
 **③–⑤** Create the challenge, show the number, poll — identical to plain
 Flow A above, with one addition: pass the typed username as
 `createChallenge()`'s optional fourth argument (`requested_identity` at the
-API level) so it shows up on the approver's Pending Logins card ("Claiming
-to be `guest`"). **This is a courtesy, not a security control** — ErnsAuth
-stores and displays it verbatim (HTML-escaped) but never validates it
-against anything, since it has no way to. Its only job is letting a human
-approver notice "that's not me" and reject before tapping a number, which
-step ⑥ below still has to independently verify regardless of what the
-approver saw or did:
+API level). It shows up on the approver's Pending Logins card ("Claiming to
+be `guest`") **and, since 2026-09-02, ErnsAuth checks it server-side before
+letting anyone approve**: only the ErnsAuth account whose own username
+matches `requested_identity` can click a number for that challenge at all —
+every other logged-in ErnsAuth user sees the card with its numbers disabled.
+This is real enforcement on ErnsAuth's side now, not just a label for a
+human to eyeball — but treat it as a second, independent layer, not a
+replacement for your own step ⑥ check below: your app is the one deciding
+who gets a session, and shouldn't take that decision on faith from a remote
+system's response alone, however well-enforced.
 
 ```php
 $challenge = $client->createChallenge($clientIp, $userAgent, $username);
 ```
 
 **⑥ After `exchange_code` succeeds, check the identity before logging anyone
-in.** This one comparison is the entire security property of the variant:
+in.** Backed by ③'s server-side enforcement now, but still the check that
+actually ties a session to your app's own account — never skip it because
+ErnsAuth "already checked":
 
 ```php
 $user = $client->exchangeCode($poll['auth_code']);
@@ -348,7 +357,7 @@ plain Flow A has, not less. Every row below is a *must*:
 | **`session_regenerate_id(true)` only fires after ⑥ passes, never before** | Don't issue a fresh authenticated session ahead of the identity actually being confirmed. | ⑥ |
 | **SSO failures (unresolved username, mismatch, expired/rejected challenge) increment the same lockout counters your password login already uses** | Otherwise SSO becomes a second, unthrottled guessing/harassment surface against an account that password login already protects with a lockout. | ① and ⑥ |
 | **Log challenge creation and ⑥'s outcome — username, IP, matched or not, timestamp** | Doesn't prevent an attempt, but it's what turns "this account was repeatedly targeted" from invisible into detectable. Never log the `auth_code` itself, or a `challenge_id` beyond its single use. | ①, ③, ⑥ |
-| **Never treat `requested_identity` (or the approver having seen/approved it) as proof of anything** | It's an unverified, attacker-controllable label your own app supplied — ErnsAuth stores and displays it, full stop. Step ⑥'s comparison against the *actual* approving identity is the only check that counts; a "the approver saw the right name" argument is not a substitute for it. | ③, ⑥ |
+| **Still do step ⑥'s comparison yourself — don't rely solely on ErnsAuth's server-side `requested_identity` enforcement** | `requested_identity` is still an attacker-controllable string your own app supplied, and ErnsAuth's approval-time check is a second, independent layer, not a substitute for your own. A bug in that enforcement, an older ErnsAuth server without it deployed, or `requested_identity` simply never having been sent all degrade silently to "unenforced" from ErnsAuth's side — step ⑥'s comparison against the identity `exchange_code` actually returns is what your app can independently verify, and is the one check you control end to end. | ③, ⑥ |
 
 Skipping any row doesn't leave you with plain Flow A's security — it leaves
 you with *less*, because you've now added an identity claim (the typed
@@ -498,10 +507,10 @@ Handle 429 by telling the user to wait, not by retrying in a tighter loop.
 - [ ] **Flow A + mandatory username:** at most one pending challenge per submitted username
 - [ ] **Flow A + mandatory username:** CSRF protection on the challenge-creation endpoint
 - [ ] **Flow A + mandatory username:** exchanged `username`/`user_id` compared against the identity pinned *before* the challenge was created — session created only on a match, rejected otherwise
-- [ ] **Flow A + mandatory username:** the expected-identity mapping (step ②) is a real, verified mapping to each user's actual ErnsAuth username — not an unverified same-spelling guess left to fail silently in production
+- [ ] **Flow A + mandatory username:** every SSO-enabled account's app username is spelled identically to its real ErnsAuth username — confirmed per account, not assumed; there is no mapping table to fall back on if it isn't true
 - [ ] **Flow A + mandatory username:** unresolved-username and identity-mismatch failures feed the same lockout counters as password login
 - [ ] **Flow A + mandatory username:** challenge creation and the identity-check outcome logged (username, IP, matched/not, timestamp — never the `auth_code`)
-- [ ] **Flow A + mandatory username:** the typed username passed to `createChallenge()` as `requested_identity`, and never treated as anything more than a label the approver sees
+- [ ] **Flow A + mandatory username:** the typed username passed to `createChallenge()` as `requested_identity` — ErnsAuth enforces it server-side at approval time, but step ⑥'s own comparison is still done independently, never skipped because of that
 - [ ] **Flow B:** SMTP verified working on the ErnsAuth server
 - [ ] **Flow B:** no branching on `send_otp` — it succeeds for unknown emails too
 - [ ] **Flow B:** retries allowed against the same `otp_id`
