@@ -73,8 +73,11 @@ switch ($action) {
 
         $clientIp = $input['client_ip'] ?? $ip;
         $clientUa = $input['client_user_agent'] ?? '';
+        // Display-only -- see SSO::createChallenge()'s own docblock. Never
+        // used here, or anywhere else in this file, for any decision.
+        $requestedIdentity = (string)($input['requested_identity'] ?? '');
 
-        $result = SSO::createChallenge($config, $appId, $clientIp, $clientUa);
+        $result = SSO::createChallenge($config, $appId, $clientIp, $clientUa, $requestedIdentity);
         AuditLog::log($config, 'sso_challenge_created', null, [
             'app_id' => $appId, 'challenge_id' => $result['challenge_id']
         ]);

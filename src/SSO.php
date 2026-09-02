@@ -2,8 +2,23 @@
 
 class SSO
 {
-    public static function createChallenge(Config $config, string $clientAppId, string $clientIp, string $clientUa): array
+    // $requestedIdentity is DISPLAY-ONLY -- an optional, free-text label
+    // the calling client app supplies (e.g. the username it was just
+    // typed into its own login form), shown on the approver's Pending
+    // Logins card so they can sanity-check *what* is being claimed, not
+    // just blindly pick a number. ErnsAuth never validates it against
+    // anything -- it has no knowledge of any client app's own account
+    // namespace, and never will (see CLIENT-INTEGRATION.md's "Requiring a
+    // username before Flow A" for why that validation is squarely the
+    // client app's own job, done after exchange_code, against its own
+    // user data). Truncated defensively even though the column itself
+    // already caps length, and always rendered through the same h()
+    // escaping every other user-supplied value on this dashboard already
+    // gets (web/js/dashboard.js) -- treat this as attacker-controllable
+    // text, because for a compromised or malicious client app, it is.
+    public static function createChallenge(Config $config, string $clientAppId, string $clientIp, string $clientUa, string $requestedIdentity = ''): array
     {
+        $requestedIdentity = $requestedIdentity !== '' ? mb_substr($requestedIdentity, 0, 128) : null;
         // A browser starting a new challenge -- whether a normal page load,
         // a tab it left open and reloaded, or an explicit "new request"
         // click after losing sync -- means any challenge it created earlier
@@ -39,8 +54,8 @@ class SSO
         $expiresAt = $now + $config->get('challenge_ttl', 300);
 
         $st = $config->db()->prepare(
-            "INSERT INTO sso_challenges (id, client_app_id, challenge_number, client_ip, client_user_agent, status, created_at, expires_at)
-             VALUES (:id, :app_id, :number, :ip, :ua, 'pending', :created_at, :expires_at)"
+            "INSERT INTO sso_challenges (id, client_app_id, challenge_number, client_ip, client_user_agent, requested_identity, status, created_at, expires_at)
+             VALUES (:id, :app_id, :number, :ip, :ua, :requested_identity, 'pending', :created_at, :expires_at)"
         );
         $st->execute([
             ':id'         => $id,
@@ -48,6 +63,7 @@ class SSO
             ':number'     => $number,
             ':ip'         => $clientIp,
             ':ua'         => $clientUa,
+            ':requested_identity' => $requestedIdentity,
             ':created_at' => $now,
             ':expires_at' => $expiresAt,
         ]);
@@ -100,7 +116,7 @@ class SSO
         )->execute([':now' => $now]);
 
         $st = $config->db()->prepare(
-            "SELECT c.id, c.challenge_number, c.client_ip, c.client_user_agent, c.created_at, c.expires_at,
+            "SELECT c.id, c.challenge_number, c.client_ip, c.client_user_agent, c.requested_identity, c.created_at, c.expires_at,
                     a.label AS app_label, a.icon_emoji AS app_emoji
              FROM sso_challenges c
              JOIN client_apps a ON c.client_app_id = a.id

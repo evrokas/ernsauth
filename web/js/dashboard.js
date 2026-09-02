@@ -105,6 +105,13 @@
                 html += '<span class="challenge-app">' + h(ch.app_label) + '</span>';
                 html += '</div>';
                 html += '<div class="challenge-meta">From ' + h(ch.client_ip) + ' &middot; ' + h(ch.time_ago) + '</div>';
+                if (ch.requested_identity) {
+                    // Whatever the calling app typed into its own login form
+                    // -- an unverified claim, not something ErnsAuth checked.
+                    // Shown so the approver can catch "that's not me" before
+                    // tapping a number, not treated as a fact anywhere else.
+                    html += '<div class="challenge-identity">Claiming to be <strong>' + h(ch.requested_identity) + '</strong></div>';
+                }
                 html += '<div class="challenge-numbers">';
                 ch.numbers.forEach(function(n) {
                     html += '<button class="number-btn" data-challenge="' + h(ch.id) + '" data-number="' + n + '">' + n + '</button>';

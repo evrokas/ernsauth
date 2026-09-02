@@ -24,11 +24,19 @@ class ErnsAuthClient
 
     // ── SSO Flow ──────────────────────────────────────────────────────────
 
-    public function createChallenge(string $clientIp, string $userAgent): array
+    // $requestedIdentity is optional and DISPLAY-ONLY -- shown on the
+    // approver's Pending Logins card, never validated by ErnsAuth against
+    // anything. See CLIENT-INTEGRATION.md's "Requiring a username before
+    // Flow A" for why the actual identity check still has to happen in
+    // your own app, after exchangeCode(), against your own user data --
+    // this parameter only helps a human approver catch "that's not me"
+    // before tapping a number; it is not itself a security control.
+    public function createChallenge(string $clientIp, string $userAgent, string $requestedIdentity = ''): array
     {
         return $this->request('POST', 'create_challenge', [
             'client_ip'         => $clientIp,
             'client_user_agent' => $userAgent,
+            'requested_identity' => $requestedIdentity,
         ]);
     }
 

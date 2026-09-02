@@ -141,6 +141,7 @@ CREATE TABLE IF NOT EXISTS sso_challenges (
     challenge_number  SMALLINT     NOT NULL,
     client_ip         VARCHAR(45)  DEFAULT NULL,
     client_user_agent VARCHAR(500) DEFAULT NULL,
+    requested_identity VARCHAR(128) DEFAULT NULL,
     status            ENUM('pending','approved','rejected','expired') NOT NULL DEFAULT 'pending',
     approved_by       CHAR(16)     DEFAULT NULL,
     auth_code         CHAR(32)     DEFAULT NULL,

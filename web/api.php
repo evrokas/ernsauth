@@ -77,6 +77,7 @@ switch ($action) {
                 'app_label' => $ch['app_label'],
                 'app_emoji' => $ch['app_emoji'],
                 'client_ip' => $ch['client_ip'],
+                'requested_identity' => $ch['requested_identity'],
                 'time_ago'  => timeAgo($ch['created_at']),
                 'numbers'   => $numbers,
             ];
