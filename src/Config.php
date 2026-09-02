@@ -231,13 +231,20 @@ class Config
 
     // ── Session methods ─────────────────────────────────────────────────────
 
-    public function createSession(string $userId, string $tokenHash, string $ip, string $ua, int $expiresAt): string
+    // $csrfToken is stored alongside the session so a later checkCookie()
+    // revival of this same row (see Auth::checkCookie()) can restore the
+    // exact CSRF token already embedded in any page rendered from the
+    // PHP session this persistent one is backing, instead of minting a
+    // fresh random one every time PHP's own session data is lost and has
+    // to be rebuilt from this cookie -- see Auth.php's own docblock on
+    // checkCookie() for the bug this fixes.
+    public function createSession(string $userId, string $tokenHash, string $ip, string $ua, int $expiresAt, string $csrfToken): string
     {
         $id = bin2hex(random_bytes(32));
         $now = time();
         $st = $this->db->prepare(
-            "INSERT INTO sessions (id, user_id, token_hash, ip_address, user_agent, device_label, created_at, last_active, expires_at)
-             VALUES (:id, :user_id, :token_hash, :ip, :ua, :device_label, :created_at, :last_active, :expires_at)"
+            "INSERT INTO sessions (id, user_id, token_hash, ip_address, user_agent, device_label, csrf_token, created_at, last_active, expires_at)
+             VALUES (:id, :user_id, :token_hash, :ip, :ua, :device_label, :csrf_token, :created_at, :last_active, :expires_at)"
         );
         $st->execute([
             ':id'           => $id,
@@ -246,11 +253,22 @@ class Config
             ':ip'           => $ip,
             ':ua'           => $ua,
             ':device_label' => self::parseDeviceLabel($ua),
+            ':csrf_token'   => $csrfToken,
             ':created_at'   => $now,
             ':last_active'  => $now,
             ':expires_at'   => $expiresAt,
         ]);
         return $id;
+    }
+
+    // Backfills csrf_token for a session row created before this column
+    // existed (NULL) or one that somehow still has none -- see
+    // Auth::checkCookie(), which calls this on exactly that case so the
+    // row is stable (not regenerated again) on every later revival.
+    public function updateSessionCsrfToken(string $id, string $csrfToken): void
+    {
+        $st = $this->db->prepare("UPDATE sessions SET csrf_token = :t WHERE id = :id");
+        $st->execute([':t' => $csrfToken, ':id' => $id]);
     }
 
     public function getSessionByToken(string $tokenHash): ?array

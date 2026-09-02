@@ -44,6 +44,20 @@
                 window.location.href = 'login.php';
                 throw new Error('Not authenticated');
             }
+            if (r.status === 403) {
+                // The token this page embedded no longer matches the
+                // session's -- normally impossible within one page load
+                // now that Auth::checkCookie() restores a stable,
+                // per-session token (see its own docblock) instead of
+                // minting a fresh one on every revival, but still the
+                // right recovery for a session invalidated some other way
+                // (revoked from another device, an admin action, ...).
+                // Reloading re-renders the page with whatever token the
+                // *current* session actually has, rather than leaving the
+                // click looking like it silently did nothing.
+                window.location.reload();
+                throw new Error('Session out of date');
+            }
             return r.json();
         });
     }

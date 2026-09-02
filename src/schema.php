@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     ip_address   VARCHAR(45)  DEFAULT NULL,
     user_agent   VARCHAR(500) DEFAULT NULL,
     device_label VARCHAR(100) DEFAULT '',
+    csrf_token   CHAR(64)     DEFAULT NULL,
     created_at   INT UNSIGNED NOT NULL,
     last_active  INT UNSIGNED NOT NULL,
     expires_at   INT UNSIGNED NOT NULL,

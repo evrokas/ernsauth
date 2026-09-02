@@ -104,7 +104,8 @@ class Auth
             $tokenHash,
             $_SERVER['REMOTE_ADDR'] ?? '',
             $_SERVER['HTTP_USER_AGENT'] ?? '',
-            $expiresAt
+            $expiresAt,
+            $_SESSION['csrf_token']
         );
         $_SESSION['ea_session_id'] = $sessionId;
 
@@ -222,6 +223,26 @@ class Auth
             'totp_enabled' => (int)$session['totp_enabled'],
         ];
         $_SESSION['ea_authed'] = true;
+
+        // Restore this persistent session's own CSRF token rather than
+        // leaving $_SESSION['csrf_token'] empty for ensureCsrf() to mint a
+        // fresh random one -- that used to happen on *every* revival
+        // (PHP's own session data can be lost between requests for
+        // ordinary reasons: gc_maxlifetime expiry, a backgrounded tab
+        // resuming, multiple app servers without shared session storage),
+        // which silently invalidated the CSRF token any already-open page
+        // still had embedded -- clicking a button on that page (e.g.
+        // approving a pending SSO login) then 403'd with no clear signal
+        // why, "fixed" only by a full logout/login that re-rendered the
+        // page with a fresh, matching token. A row from before this
+        // column existed has none yet -- generate one now and persist it
+        // so this exact row is stable on every later revival too.
+        $csrfToken = $session['csrf_token'] ?? '';
+        if ($csrfToken === '') {
+            $csrfToken = bin2hex(random_bytes(32));
+            $config->updateSessionCsrfToken($session['id'], $csrfToken);
+        }
+        $_SESSION['csrf_token'] = $csrfToken;
 
         // Update last active
         $config->updateSessionActivity($session['id']);
