@@ -75,6 +75,8 @@ GET/POST sso-api.php?action=<action>
 
 ## Client Integration
 
+**See [CLIENT-INTEGRATION.md](CLIENT-INTEGRATION.md) for the full guide** — both sign-in flows (number matching without a username, and email OTP where the user identifies themselves first), worked examples, error and rate-limit handling, and an implementation checklist. The quick version follows.
+
 Clone this repo's `stable` branch into your app (e.g. `lib/ernsauth`) rather than hand-copying `client/ErnsAuthClient.php` — `stable` always holds the latest stable release, and `git pull` there picks up updates without a manual re-copy that can silently drift from upstream:
 
 ```bash
