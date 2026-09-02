@@ -22,6 +22,16 @@ opening the dashboard is inconvenient.
 Both flows end the same way: ErnsAuth hands you `user_id`, `username`, `email`
 and `display_name`, and **your app** creates its own session from that.
 
+> **A third option, not a third protocol:** if your app has several accounts
+> and needs to know *which one* is signing in — rather than accepting
+> whichever ErnsAuth account happens to approve — wrap Flow A in a username
+> step of your own. The wire calls are unchanged; only your app's logic
+> around them changes. See [Requiring a username before Flow
+> A](#requiring-a-username-before-flow-a-multi-account-apps) below. This is
+> **not** the same as Flow B's email address, which ErnsAuth itself uses to
+> pick the account — here the username is yours alone, checked entirely on
+> your side.
+
 > **On "username":** the OTP flow identifies the user by **email address**
 > — `send_otp` validates the field with `FILTER_VALIDATE_EMAIL` and looks the
 > account up by email only. ErnsAuth accounts *do* have a separate username,
@@ -208,7 +218,115 @@ as a side effect.
 
 `web/login.php` in [apyweb](https://github.com/evrokas/apyweb) is a complete
 working implementation of this flow — explicit start button, session-stored
-challenge, poll endpoint, and recovery link.
+challenge, poll endpoint, and recovery link. apyweb has exactly one shared
+account, so it never needed the variant below — skip ahead to Flow B if you
+don't either.
+
+### Requiring a username before Flow A (multi-account apps)
+
+Plain Flow A never learns who's signing in until the exchange finishes —
+fine for one shared account, wrong once different people need to end up
+signed in as *their own* account with their own permissions. If that's you,
+wrap Flow A in three extra steps around the same three API calls.
+**`create_challenge` still takes no identity — it's still just IP/UA.** The
+username lives, and is checked, entirely in your own app; ErnsAuth never
+sees it.
+
+```
+   your app                     ErnsAuth                    the user
+      │                            │                            │
+      │  user types a username     │                            │
+      │<────────────────────────────────────────────────────────┤
+      │  (①  validate locally,     │                            │
+      │      pin expected identity)│                            │
+      │                            │                            │
+      │  POST create_challenge     │                            │
+      ├───────────────────────────>│                            │
+      │  {challenge_id, number}    │                            │
+      │<───────────────────────────┤                            │
+      │                    ... steps 2–4 of plain Flow A, unchanged ...
+      │  POST exchange_code        │                            │
+      ├───────────────────────────>│                            │
+      │  {user_id, username, ...}  │                            │
+      │<───────────────────────────┤                            │
+      │                            │                            │
+      │  ⑥ compare returned        │                            │
+      │    username to the one     │                            │
+      │    pinned in ① — reject    │                            │
+      │    on any mismatch         │                            │
+```
+
+**① Validate the username against your own user store, before creating a
+challenge.** Look it up in *your* accounts, not ErnsAuth's — reject
+unknown/inactive/locked accounts exactly as you would for a password login.
+
+**② Pin the *expected* ErnsAuth identity to the session before the challenge
+exists.** This is what step ⑥ checks against — without it there is nothing
+to compare the approver to. If your usernames and ErnsAuth usernames can
+differ, resolve that mapping here, not later:
+
+```php
+$account = my_app_lookup_user($username);   // your own users table
+$_SESSION['ea_expected_username'] = $account
+    ? ($account['ernsauth_username'] ?? $account['username'])
+    : null;   // null on purpose -- see the enumeration row below
+$_SESSION['ea_pending_login'] = $account ? ['uname' => $account['username']] : null;
+```
+
+**③–⑤** Create the challenge, show the number, poll — identical to plain
+Flow A above. The username plays no part in these three calls.
+
+**⑥ After `exchange_code` succeeds, check the identity before logging anyone
+in.** This one comparison is the entire security property of the variant:
+
+```php
+$user = $client->exchangeCode($poll['auth_code']);
+
+$expected = $_SESSION['ea_expected_username'] ?? null;
+if ($expected === null || !hash_equals($expected, $user['username'])) {
+    // Either the typed username never resolved to an account (①), or a
+    // *different* ErnsAuth account approved it than the one that account
+    // maps to. Either way: reject. Do NOT create a session for $user.
+    unset($_SESSION['ea_expected_username'], $_SESSION['ea_pending_login']);
+    my_app_record_failed_sso_attempt($submittedUsername);   // see the table below
+    jsonError('Could not verify this login.');
+    exit;
+}
+
+session_regenerate_id(true);
+$_SESSION['authed'] = true;
+$_SESSION['user']   = $user;                                   // the ErnsAuth identity
+$_SESSION['uname']  = $_SESSION['ea_pending_login']['uname'];   // YOUR account
+unset($_SESSION['ea_expected_username'], $_SESSION['ea_pending_login']);
+```
+
+Without step ⑥, the username step is theater: the number-matching UI still
+works, but *any* ErnsAuth account that picks the right number gets treated
+as authenticated, regardless of whose username started the request. The
+comparison above — not the username field, not the challenge, not the
+number — is the only thing that actually ties the session to the account
+that was asked for.
+
+#### 🔒 Security requirements — read before shipping this variant
+
+Wrapping Flow A in a username step adds a pre-auth database lookup and a
+per-account approval flow to your app — that's **more** attack surface than
+plain Flow A has, not less. Every row below is a *must*:
+
+| Requirement | Why it matters | Where |
+|---|---|---|
+| **Identical response whether the username resolves or not** | ①'s lookup is instant and entirely local. If a nonexistent/disabled username produces a different response (a different error, no `challenge_id`, a faster reply) than a valid one, that's a free oracle for enumerating real usernames without ever touching ErnsAuth. Always call `createChallenge()` and return the same `{challenge_id, challenge_number, expires_at}` shape either way — an unresolved username simply never gets an expected identity pinned, so ⑥ can never succeed for it. | ①–② |
+| **Your own rate limit, keyed on the real end-user IP *and* the submitted username** | ErnsAuth's `create_challenge` limit (30/5min, see below) is keyed on **whoever calls the API** — if your app proxies server-to-server, that's *your server's* IP, shared across every one of your users. It cannot stop an attacker from hammering one target username while your other users keep working; only your app can see which username is being targeted. | Before ③ |
+| **At most one pending challenge per submitted username** | Otherwise a target's ErnsAuth "Pending Logins" list can be flooded with lookalike requests, banking on the same push/prompt-fatigue social engineering every number-matching MFA is subject to. A new request for a username with one already pending should reuse or reject it, not add another. | ③ |
+| **CSRF protection on the endpoint that creates the challenge** | Same convention as every other state-changing action in your app; doubles as one more throttle against scripted spamming. | ③ |
+| **Step ⑥'s identity check is mandatory and rejects on *any* mismatch — including an unresolved username, a `rejected`/`expired`/`not_found` poll, or a mismatched approver** | This single comparison is the whole security property of the variant. Logging the *approver's* identity in regardless of match, treating a mismatch as a soft warning, or skipping the check when convenient all defeat the entire reason to ask for a username. | ⑥ |
+| **`session_regenerate_id(true)` only fires after ⑥ passes, never before** | Don't issue a fresh authenticated session ahead of the identity actually being confirmed. | ⑥ |
+| **SSO failures (unresolved username, mismatch, expired/rejected challenge) increment the same lockout counters your password login already uses** | Otherwise SSO becomes a second, unthrottled guessing/harassment surface against an account that password login already protects with a lockout. | ① and ⑥ |
+| **Log challenge creation and ⑥'s outcome — username, IP, matched or not, timestamp** | Doesn't prevent an attempt, but it's what turns "this account was repeatedly targeted" from invisible into detectable. Never log the `auth_code` itself, or a `challenge_id` beyond its single use. | ①, ③, ⑥ |
+
+Skipping any row doesn't leave you with plain Flow A's security — it leaves
+you with *less*, because you've now added an identity claim (the typed
+username) without the verification that claim depends on.
 
 ---
 
@@ -326,6 +444,17 @@ rather than constants:
 
 Handle 429 by telling the user to wait, not by retrying in a tighter loop.
 
+> **These limits are keyed on the IP that calls `sso-api.php`** — your
+> server's own IP, if you proxy Flow A server-to-server, not necessarily any
+> one end user. A single shared budget per app is the right trade-off for
+> protecting ErnsAuth itself, but it means these limits do **not** stop one
+> of your users — or an attacker targeting one of your users — from
+> starving every *other* user's ability to sign in. If you need per-user
+> protection, and the [mandatory-username variant of Flow
+> A](#requiring-a-username-before-flow-a-multi-account-apps) always does,
+> add your own throttle in front of these calls; don't rely on ErnsAuth's
+> limiter to provide it.
+
 ---
 
 ## Checklist
@@ -338,6 +467,13 @@ Handle 429 by telling the user to wait, not by retrying in a tighter loop.
 - [ ] **Flow A:** `challenge_id` kept server-side, in the session
 - [ ] **Flow A:** polling stops on `approved` / `rejected` / `expired` / `not_found`
 - [ ] **Flow A:** a "new request" control visible at all times, not only after an error
+- [ ] **Flow A + mandatory username:** identical response whether the submitted username resolves to an account or not
+- [ ] **Flow A + mandatory username:** your own rate limit keyed on end-user IP *and* username, in front of `createChallenge` — ErnsAuth's own limiter is keyed on your server's IP, not your end users'
+- [ ] **Flow A + mandatory username:** at most one pending challenge per submitted username
+- [ ] **Flow A + mandatory username:** CSRF protection on the challenge-creation endpoint
+- [ ] **Flow A + mandatory username:** exchanged `username`/`user_id` compared against the identity pinned *before* the challenge was created — session created only on a match, rejected otherwise
+- [ ] **Flow A + mandatory username:** unresolved-username and identity-mismatch failures feed the same lockout counters as password login
+- [ ] **Flow A + mandatory username:** challenge creation and the identity-check outcome logged (username, IP, matched/not, timestamp — never the `auth_code`)
 - [ ] **Flow B:** SMTP verified working on the ErnsAuth server
 - [ ] **Flow B:** no branching on `send_otp` — it succeeds for unknown emails too
 - [ ] **Flow B:** retries allowed against the same `otp_id`
