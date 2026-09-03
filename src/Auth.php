@@ -267,7 +267,19 @@ class Auth
 
         $tokenHash = hash('sha256', $token);
         $session = $config->getSessionByToken($tokenHash);
-        if (!$session) return false;
+        if (!$session) {
+            // Now that every successful revival rotates the token (below),
+            // this is the expected shape of a replay attempt: the
+            // legitimate use already advanced the DB row to a new hash, so
+            // a copy of the old cookie value -- stolen, or just a stale
+            // browser-restored tab -- no longer matches anything. Also
+            // covers a token that's simply expired or was never valid.
+            // Can't distinguish those cases from the hash alone (that's
+            // inherent to not keeping rotation history), but every one of
+            // them is worth a record rather than silently doing nothing.
+            self::logSecurityEvent('session_cookie_invalid', null);
+            return false;
+        }
 
         // Check user is still active
         if (empty($session['user_active'])) return false;
@@ -296,6 +308,32 @@ class Auth
         if ($currentIp !== ($session['ip_address'] ?? '')) {
             self::logSecurityEvent('session_ip_changed_on_revival', $session['user_id'] ?? null);
         }
+
+        // Rotate the "remember me" token itself on every use, not just the
+        // live PHP session ID -- the cookie value presented here becomes
+        // worthless the moment it's used, whether that use was the real
+        // user or someone who stole it. This is the actual anti-replay
+        // property: a copy of an old cookie value (network capture, disk
+        // access, browser history sync, wherever it leaked from) stops
+        // working as soon as *either* party uses it once, not just once it
+        // eventually expires. rotateSessionToken()'s conditional UPDATE
+        // means this can only succeed once per token -- if it fails here
+        // (another request already rotated this exact token first), that's
+        // treated identically to an invalid cookie: refuse to revive,
+        // require a real login. No grace/overlap window by design.
+        $newToken = bin2hex(random_bytes(32));
+        $newTokenHash = hash('sha256', $newToken);
+        if (!$config->rotateSessionToken($session['id'], $tokenHash, $newTokenHash)) {
+            self::logSecurityEvent('session_token_reuse', $session['user_id'] ?? null);
+            return false;
+        }
+        setcookie($cookieName, $newToken, [
+            'expires'  => (int)$session['expires_at'],
+            'path'     => $config->get('cookie_path', '/'),
+            'secure'   => self::isSecure(),
+            'httponly'  => true,
+            'samesite'  => 'Strict',
+        ]);
 
         // Hydrate session
         session_regenerate_id(true);

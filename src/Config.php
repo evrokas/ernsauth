@@ -271,6 +271,25 @@ class Config
         $st->execute([':t' => $csrfToken, ':id' => $id]);
     }
 
+    // "Remember me" token rotation -- see Auth::checkCookie(). The UPDATE
+    // is conditioned on the token_hash still being $oldTokenHash (the same
+    // conditional-UPDATE-plus-rowCount() pattern already used for
+    // exchange_code's one-time auth_code in SSO.php::exchangeCode()) so a
+    // token can only ever be rotated once: if two requests somehow present
+    // the same not-yet-rotated cookie concurrently, exactly one wins this
+    // UPDATE and gets the new token; the other's rowCount() comes back 0,
+    // which Auth::checkCookie() treats as an invalid/already-used token
+    // rather than silently handing out a second valid rotation. Returns
+    // whether the rotation actually took effect.
+    public function rotateSessionToken(string $id, string $oldTokenHash, string $newTokenHash): bool
+    {
+        $st = $this->db->prepare(
+            "UPDATE sessions SET token_hash = :new WHERE id = :id AND token_hash = :old"
+        );
+        $st->execute([':new' => $newTokenHash, ':id' => $id, ':old' => $oldTokenHash]);
+        return $st->rowCount() > 0;
+    }
+
     public function getSessionByToken(string $tokenHash): ?array
     {
         $st = $this->db->prepare(
