@@ -139,7 +139,8 @@ tr.current td { background: rgba(91,124,246,0.08); }
 .challenge-emoji { font-size: 24px; }
 .challenge-app { font-weight: 600; font-size: 14px; }
 .challenge-meta { font-size: 12px; color: #64748b; margin-bottom: 16px; }
-.challenge-identity { font-size: 13px; color: #334155; margin-bottom: 16px; }
+.challenge-identity { font-size: 14px; color: #cbd5e1; margin-bottom: 16px; }
+.challenge-identity strong { color: #5b7cf6; font-weight: 700; }
 .challenge-numbers {
   display: flex;
   gap: 10px;
