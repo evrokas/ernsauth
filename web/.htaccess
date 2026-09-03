@@ -24,3 +24,21 @@ RewriteEngine On
 RewriteCond %{HTTPS} off
 RewriteCond %{HTTP:X-Forwarded-Proto} !https
 RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Security headers -- Auth.php's sendSecurityHeaders() already sends these
+# on every PHP-rendered response, but that only covers requests that reach
+# PHP at all. This is the same set, applied at the server level too, so a
+# static asset served directly by Apache (css/js/images -- anything that
+# never touches Auth::startSession()) still gets them. Guarded so a server
+# without mod_headers doesn't fail to start; PHP's own header() calls are
+# what's load-bearing.
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+    Header always set Referrer-Policy "same-origin"
+    # Only advertised over an actual HTTPS connection to Apache -- unlike
+    # Auth::isSecure(), mod_headers has no simple way to also check
+    # X-Forwarded-Proto here, so a deployment terminating TLS at a reverse
+    # proxy should set this header at the proxy instead.
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" env=HTTPS
+</IfModule>
