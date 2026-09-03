@@ -328,6 +328,39 @@ Handle 429 by telling the user to wait, not by retrying in a tighter loop.
 
 ---
 
+## Branding the sign-in screen (optional)
+
+If your app names ErnsAuth anywhere in its own UI — a subtitle, a button
+label, an "update available" banner — write it as **ERNSAuth**, and
+anywhere that text isn't sitting on a solid-color background, color the
+"Auth" half `#5b7cf6`: the same blue ErnsAuth's own logo uses for that half
+of its name (`web/css/auth.css` and `web/css/dashboard.css` in this repo,
+`h1 span { color: #5b7cf6; }`). It reads as the same mark rather than a
+random blue.
+
+```html
+<div class="subtitle">Sign in via ERNS<span style="color:#5b7cf6">Auth</span></div>
+```
+
+Skip the color on a button whose own background is already blue — a light
+blue on a darker blue fill hurts contrast rather than reading as the brand,
+so plain white (or whatever the button's normal text color is) is the right
+call there:
+
+```html
+<a class="start-btn" href="login.php?start=1">Sign in with ERNSAuth</a>
+```
+
+Plain-text output — a `die()` message, a JSON error string — has no markup
+to color at all, so it just gets the plain "ERNSAuth" spelling and nothing
+else.
+
+`web/login.php` and the update-notice banner in
+[apyweb](https://github.com/evrokas/apyweb)'s `web/index.php` do exactly
+this and are the reference.
+
+---
+
 ## Checklist
 
 - [ ] App registered; API key stored outside the web root and gitignored
@@ -343,3 +376,4 @@ Handle 429 by telling the user to wait, not by retrying in a tighter loop.
 - [ ] **Flow B:** retries allowed against the same `otp_id`
 - [ ] `session_regenerate_id(true)` on success
 - [ ] Per-user authorization applied in your app, if you need it
+- [ ] (optional) Sign-in UI names it "ERNSAuth", with "Auth" colored `#5b7cf6` off a solid-blue background
