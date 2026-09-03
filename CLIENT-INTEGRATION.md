@@ -354,6 +354,41 @@ Skipping any row doesn't leave you with plain Flow A's security — it leaves
 you with *less*, because you've now added an identity claim (the typed
 username) without the verification that claim depends on.
 
+#### A note on deliberately skipping step ⑥
+
+The guidance above is written as *mandatory* because that's the correct
+default, and the failure mode of skipping it silently is severe (any
+approver claims any account). That said, at least one real integration
+(zpms, see its own repo's `CLAUDE.md`/`README.md`, dated 2026-09-03) has
+made an informed decision to drop step ⑥'s comparison entirely, after
+walking through exactly what it does and doesn't protect against. It's
+documented here, not to soften the requirement, but because "mandatory" is
+only true relative to a threat model, and it's worth being explicit about
+what that threat model is:
+
+Step ⑥ protects against an ErnsAuth identity that *isn't* entitled to a
+given app account successfully claiming it anyway — someone typing another
+user's account name into your app and approving it with their own,
+differently-privileged ErnsAuth login. That threat requires more than one
+person to actually hold ErnsAuth dashboard access to your registered app.
+If dashboard access for your app is held by a single trusted operator (not
+a wider staff population), that specific scenario can't occur the way it
+does for a multi-approver deployment. What step ⑥ *would* still buy you in
+that shape is blast-radius containment if that one account is ever
+compromised — without it, a compromised account becomes a skeleton key to
+every one of your app's accounts by username; with it, only the one account
+whose username happens to match. Neither shape is protected by step ⑥
+against a full compromise of the ErnsAuth **server** itself (DB/RCE
+access) — an attacker at that level can make `exchange_code` return
+whatever identity your check wants to see, so no client-side comparison
+survives that regardless.
+
+If you're considering skipping step ⑥: this is only a reasonable trade for
+an app whose ErnsAuth-approver population is genuinely small and trusted,
+and it should be a decision made with eyes open to the blast-radius
+tradeoff above — not a default, and not something to copy from another
+app's code without re-deriving whether it fits your own deployment shape.
+
 ---
 
 ## Flow B — email OTP (user identifies first)
