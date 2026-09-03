@@ -140,10 +140,6 @@ tr.current td { background: rgba(91,124,246,0.08); }
 .challenge-app { font-weight: 600; font-size: 14px; }
 .challenge-meta { font-size: 12px; color: #64748b; margin-bottom: 16px; }
 .challenge-identity { font-size: 13px; color: #334155; margin-bottom: 16px; }
-.challenge-mismatch { opacity: 0.6; }
-.challenge-mismatch-note { font-size: 12px; color: #fca5a5; margin-bottom: 12px; }
-.number-btn:disabled { cursor: not-allowed; opacity: 0.5; }
-.number-btn:disabled:hover { border-color: #2e3350; background: #21253a; }
 .challenge-numbers {
   display: flex;
   gap: 10px;

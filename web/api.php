@@ -82,11 +82,7 @@ switch ($action) {
                 'numbers'   => $numbers,
             ];
         }
-        // 'you' lets the dashboard grey out (client-side only, a UX
-        // convenience) any card whose requested_identity isn't this
-        // viewer's own username -- the real enforcement is server-side in
-        // approveChallenge() below, which never trusts this response.
-        jsonOut(['challenges' => $result, 'you' => $user['username'] ?? null]);
+        jsonOut(['challenges' => $result]);
 
     case 'approve_login':
         $challengeId = $input['challenge_id'] ?? '';
@@ -94,7 +90,7 @@ switch ($action) {
         if (empty($challengeId) || $selectedNumber < 10) {
             jsonError('Invalid request');
         }
-        $result = SSO::approveChallenge($config, $challengeId, $selectedNumber, $userId, $user['username'] ?? '');
+        $result = SSO::approveChallenge($config, $challengeId, $selectedNumber, $userId);
         if (isset($result['error'])) {
             jsonError($result['error']);
         }

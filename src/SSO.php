@@ -2,24 +2,20 @@
 
 class SSO
 {
-    // $requestedIdentity is the client app's own account name for the
-    // person trying to log in (e.g. the username just typed into its
-    // login form) -- shown on the approver's Pending Logins card ("Claiming
-    // to be X") AND, since 2026-09-02, enforced server-side in
-    // approveChallenge(): a logged-in ErnsAuth user can only approve a
-    // challenge whose requested_identity matches their OWN ErnsAuth
-    // username. There is deliberately no cross-app identity-mapping table
-    // anywhere in this system (client apps' account namespaces are not
-    // ErnsAuth's business to know about) -- the enforceable rule is
-    // exactly "your ErnsAuth username must literally be the client app's
-    // username", nothing more elaborate. Client apps that can't guarantee
-    // that convention simply don't get the enforcement (see
-    // approveChallenge()'s empty-requested_identity fallback). Still
-    // truncated defensively even though the column itself already caps
-    // length, and always rendered through the same h() escaping every
-    // other user-supplied value on this dashboard already gets
-    // (web/js/dashboard.js) -- treat this as attacker-controllable text,
-    // because for a compromised or malicious client app, it is.
+    // $requestedIdentity is DISPLAY-ONLY -- an optional, free-text label
+    // the calling client app supplies (e.g. the username it was just
+    // typed into its own login form), shown on the approver's Pending
+    // Logins card so they can sanity-check *what* is being claimed, not
+    // just blindly pick a number. ErnsAuth never validates it against
+    // anything -- it has no knowledge of any client app's own account
+    // namespace, and never will (see CLIENT-INTEGRATION.md's "Requiring a
+    // username before Flow A" for why that validation is squarely the
+    // client app's own job, done after exchange_code, against its own
+    // user data). Truncated defensively even though the column itself
+    // already caps length, and always rendered through the same h()
+    // escaping every other user-supplied value on this dashboard already
+    // gets (web/js/dashboard.js) -- treat this as attacker-controllable
+    // text, because for a compromised or malicious client app, it is.
     public static function createChallenge(Config $config, string $clientAppId, string $clientIp, string $clientUa, string $requestedIdentity = ''): array
     {
         $requestedIdentity = $requestedIdentity !== '' ? mb_substr($requestedIdentity, 0, 128) : null;
@@ -144,18 +140,7 @@ class SSO
         return $numbers;
     }
 
-    // $approverUsername is the ErnsAuth username of whoever is clicking
-    // approve (the session's own account -- never client-supplied). When
-    // the challenge carries a requested_identity (see createChallenge()'s
-    // docblock), this is the actual security check: only the ErnsAuth
-    // account whose own username matches it may approve, checked here,
-    // server-side, at the moment of approval -- not left to the approver
-    // noticing the "Claiming to be X" text on their own, and not deferred
-    // to the client app to catch after the fact. A challenge with no
-    // requested_identity (an older/simpler client integration, or the
-    // plain non-mandatory-username flow) skips this check entirely, same
-    // as before this existed.
-    public static function approveChallenge(Config $config, string $challengeId, int $selectedNumber, string $userId, string $approverUsername = ''): array
+    public static function approveChallenge(Config $config, string $challengeId, int $selectedNumber, string $userId): array
     {
         $st = $config->db()->prepare(
             "SELECT * FROM sso_challenges WHERE id = :id AND status = 'pending' AND expires_at > :now"
@@ -169,10 +154,6 @@ class SSO
 
         if ((int)$row['challenge_number'] !== $selectedNumber) {
             return ['error' => 'wrong_number'];
-        }
-
-        if (!empty($row['requested_identity']) && strcasecmp($row['requested_identity'], $approverUsername) !== 0) {
-            return ['error' => 'identity_mismatch'];
         }
 
         $authCode = bin2hex(random_bytes(16));
