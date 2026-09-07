@@ -29,8 +29,10 @@ if (isset($_GET['logout']) && !empty($config)) {
     exit;
 }
 
-// Already logged in
-if (!empty($_SESSION['ea_authed'])) {
+// Already logged in -- via an existing session, or a still-valid "remember
+// me" cookie reviving one (the case this was missing: browser restarted,
+// the session-only PHPSESSID is gone, but the 30-day cookie isn't).
+if (Auth::isAuthenticated()) {
     header('Location: dashboard.php');
     exit;
 }

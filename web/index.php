@@ -13,7 +13,7 @@ try {
         exit;
     }
 
-    if (!empty($_SESSION['ea_authed'])) {
+    if (Auth::isAuthenticated()) {
         header('Location: dashboard.php');
     } else {
         header('Location: login.php');

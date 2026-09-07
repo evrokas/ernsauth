@@ -76,17 +76,40 @@ class Auth
         header('Referrer-Policy: same-origin');
     }
 
-    public static function requireLogin(): void
+    /**
+     * True if the current request is authenticated -- either an existing,
+     * still-fresh browser-session flag (see checkSessionFreshness() for the
+     * idle-timeout/UA/IP checks that guard it), or (when that's gone, e.g.
+     * the browser was restarted and the session-only PHPSESSID cookie with
+     * it) a still-valid "remember me" cookie, which this rehydrates into a
+     * fresh session.
+     *
+     * Every page that gates on being signed in must go through this (or
+     * requireLogin()/requireLoginOrJson(), which just wrap it) rather than
+     * reading $_SESSION['ea_authed'] directly -- that flag alone is exactly
+     * what "remember me" is supposed to survive without, so checking only it
+     * silently defeats the 30-day cookie the moment the browser session ends.
+     */
+    public static function isAuthenticated(): bool
     {
         self::startSession();
 
         if (!empty($_SESSION['ea_authed']) && self::checkSessionFreshness()) {
             self::ensureCsrf();
-            return;
+            return true;
         }
 
         if (self::checkCookie()) {
             self::ensureCsrf();
+            return true;
+        }
+
+        return false;
+    }
+
+    public static function requireLogin(): void
+    {
+        if (self::isAuthenticated()) {
             return;
         }
 
@@ -96,15 +119,7 @@ class Auth
 
     public static function requireLoginOrJson(): void
     {
-        self::startSession();
-
-        if (!empty($_SESSION['ea_authed']) && self::checkSessionFreshness()) {
-            self::ensureCsrf();
-            return;
-        }
-
-        if (self::checkCookie()) {
-            self::ensureCsrf();
+        if (self::isAuthenticated()) {
             return;
         }
 
