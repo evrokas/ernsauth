@@ -23,8 +23,19 @@ Auth::startSession();
 // redirect ran first it would always win and Auth::logout() would never be
 // reached at all (this was the exact bug: clicking Sign Out silently bounced
 // straight back to the dashboard without clearing the session or cookie).
-if (isset($_GET['logout']) && !empty($config)) {
-    Auth::logout($config);
+// A POST, not the GET link this used to be: signing out changes state, and
+// with SameSite=Lax on the session cookie (required -- see
+// Auth::COOKIE_SAMESITE) a cross-site GET carries that cookie, so any other
+// site could have signed the user out by navigating them to
+// login.php?logout. The token check is what actually closes it; requiring
+// POST keeps it consistent with api.php's rule that state changes are POSTs.
+// Falls back to rendering the login page (rather than erroring) if the token
+// is stale, so a user with an expired form is never stuck unable to sign out
+// -- their next attempt from a freshly loaded dashboard carries a good one.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['logout']) && !empty($config)) {
+    if (hash_equals(Auth::getCsrfToken(), (string)($_POST['csrf_token'] ?? ''))) {
+        Auth::logout($config);
+    }
     header('Location: login.php');
     exit;
 }

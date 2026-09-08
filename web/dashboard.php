@@ -27,7 +27,14 @@ $h = function($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
   <h1>Erns<span>Auth</span></h1>
   <div class="header-right">
     <span class="header-user"><?= $h($user['display_name'] ?: $user['username']) ?></span>
-    <a href="login.php?logout" class="header-btn">Sign Out</a>
+    <!-- A form, not a link: signing out changes state, so it goes through
+         the same POST + CSRF token rule api.php applies (see login.php).
+         display:contents keeps the button itself as the flex child, so the
+         header spacing is unchanged from when this was an <a>. -->
+    <form method="post" action="login.php" style="display:contents">
+      <input type="hidden" name="csrf_token" value="<?= $h($csrf) ?>">
+      <button type="submit" name="logout" value="1" class="header-btn">Sign Out</button>
+    </form>
   </div>
 </div>
 

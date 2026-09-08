@@ -32,6 +32,13 @@
 - **API dispatch**: `api.php?action=xxx` switch pattern, JSON in/out
 - **SSO API**: `sso-api.php?action=xxx` — requires `X-API-Key` header
 - **CSRF**: Token in `<meta name="csrf-token">`, sent via `X-CSRF-Token` header
+- **State changes are POSTs.** `api.php` takes its action from the query
+  string but only CSRF-checks POSTs, so a mutating action reachable by GET
+  is a credentialed cross-site request (and `SameSite=Lax` sends the cookie
+  on cross-site *navigation*). `$readOnlyActions` there is an allowlist —
+  anything not on it must be POSTed — so a newly added action defaults to
+  protected rather than exposed. Signing out is a POST form for the same
+  reason.
 - **Rate limiting**: MySQL-backed sliding window in `rate_limits` table
 - **All user output**: escaped with `htmlspecialchars($s, ENT_QUOTES, 'UTF-8')`
 - **All DB queries**: PDO prepared statements with bound parameters

@@ -48,6 +48,38 @@ if ($method === 'POST') {
 
 Auth::requireLoginOrJson();
 
+// Anything that changes state must arrive as a POST, so that it goes through
+// verifyCsrfToken() below.
+//
+// $action comes from the query string, so without this a plain GET reaches
+// the switch and skips the CSRF check entirely -- it only runs for POST.
+// Most handlers read their parameters out of the JSON body, which is empty
+// on a GET, so they bail out on their own; the ones that take no parameters
+// at all did not, and were a complete, credentialed request as a bare URL.
+// setup_totp was the sharp one: fetching it rotates totp_secret and replaces
+// the backup codes, so navigating a signed-in user to that URL from any
+// other site left their authenticator no longer matching while
+// totp_enabled stayed 1 -- i.e. locked out. revoke_all_sessions and cleanup
+// were the same shape with milder effects.
+//
+// This is what SameSite=Strict on the session cookie had been masking:
+// Strict withholds the cookie on cross-site navigation, so the request
+// arrived unauthenticated. Strict is not available to us (it also withholds
+// the cookie when a user arrives from the app they are signing in to, which
+// is this app's whole purpose -- see Auth::COOKIE_SAMESITE), and relying on
+// it here was never the real protection anyway. The rule that GET must not
+// change state is.
+//
+// An allowlist, not a denylist, so the default for a newly added action is
+// to require POST rather than to be reachable by a cross-site GET.
+$readOnlyActions = [
+    'pending_logins', 'active_sessions', 'get_profile', 'get_client_apps',
+    'get_rate_limits', 'get_users', 'audit_log',
+];
+if (!in_array($action, $readOnlyActions, true) && $method !== 'POST') {
+    jsonError('This action requires POST', 405);
+}
+
 if ($method === 'POST') {
     Auth::verifyCsrfToken();
 }
