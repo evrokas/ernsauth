@@ -17,6 +17,25 @@ class Auth
     // where that matters, don't check the box.
     private const IDLE_TIMEOUT_SECONDS = 1800; // 30 minutes
 
+    // SameSite for both cookies this class issues (the PHP session cookie and
+    // the "remember me" ea_session cookie).
+    //
+    // Must be Lax, not Strict. This app is an SSO gateway: users arrive here
+    // by following a link or redirect *from the app they're signing in to*,
+    // which is by definition a cross-site navigation. A browser withholds a
+    // Strict cookie on every cross-site navigation, including a plain
+    // top-level link click -- so an arriving user presented a perfectly
+    // valid 30-day cookie that the browser simply never sent, ErnsAuth saw
+    // an anonymous visitor, and the login form appeared anyway. That made
+    // "remember me" look broken while working correctly whenever the site
+    // was opened directly (typed URL, bookmark), which is the confusing part.
+    //
+    // Lax still withholds these cookies from cross-site POSTs and
+    // subresource requests, so it does not reopen the login-CSRF hole
+    // login.php's own token closes, nor the API CSRF checks in api.php --
+    // it only permits the top-level GET navigation that SSO depends on.
+    private const COOKIE_SAMESITE = 'Lax';
+
     public static function startSession(): void
     {
         if (!self::$started && session_status() === PHP_SESSION_NONE) {
@@ -38,7 +57,7 @@ class Auth
                 'path'     => $config->get('cookie_path', '/'),
                 'secure'   => self::isSecure(),
                 'httponly'  => true,
-                'samesite'  => 'Strict',
+                'samesite'  => self::COOKIE_SAMESITE,
             ]);
             session_start();
             self::$started = true;
@@ -192,7 +211,7 @@ class Auth
             'path'     => $config->get('cookie_path', '/'),
             'secure'   => self::isSecure(),
             'httponly'  => true,
-            'samesite'  => 'Strict',
+            'samesite'  => self::COOKIE_SAMESITE,
         ]);
     }
 
@@ -217,7 +236,7 @@ class Auth
             'path'     => $config->get('cookie_path', '/'),
             'secure'   => self::isSecure(),
             'httponly'  => true,
-            'samesite'  => 'Strict',
+            'samesite'  => self::COOKIE_SAMESITE,
         ]);
 
         self::destroySession();
@@ -347,7 +366,7 @@ class Auth
             'path'     => $config->get('cookie_path', '/'),
             'secure'   => self::isSecure(),
             'httponly'  => true,
-            'samesite'  => 'Strict',
+            'samesite'  => self::COOKIE_SAMESITE,
         ]);
 
         // Hydrate session

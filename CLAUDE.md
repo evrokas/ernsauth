@@ -15,6 +15,20 @@
 ## Key Patterns
 - **Config**: MySQL PDO singleton via `Config::getInstance()`
 - **Auth**: Session + cookie-based, adapted from tracker's auth.php
+- **Cookie SameSite must stay `Lax`** (`Auth::COOKIE_SAMESITE`, used by both
+  the PHP session cookie and the `ea_session` "remember me" cookie). This is
+  an SSO gateway, so users arrive by following a link/redirect *from* the
+  integrating app — a cross-site navigation. `Strict` makes the browser
+  withhold the cookie on exactly that navigation, so an arriving user gets
+  the login form despite a valid 30-day cookie, while direct visits (typed
+  URL, bookmark) keep working — which makes it look like "remember me" is
+  broken at random. `Lax` still withholds the cookie from cross-site POSTs,
+  so the CSRF protections are unaffected.
+- **`schema.php --init` reconciles added columns**, not just whole tables:
+  every `CREATE` is `IF NOT EXISTS`, which silently leaves an older database
+  missing columns introduced later, and the app then dies at runtime on the
+  first query naming one. New nullable columns belong in the `$addedColumns`
+  map at the end of that script.
 - **API dispatch**: `api.php?action=xxx` switch pattern, JSON in/out
 - **SSO API**: `sso-api.php?action=xxx` — requires `X-API-Key` header
 - **CSRF**: Token in `<meta name="csrf-token">`, sent via `X-CSRF-Token` header

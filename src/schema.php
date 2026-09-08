@@ -196,6 +196,48 @@ CREATE TABLE IF NOT EXISTS audit_log (
 ");
 echo "  Table: audit_log\n";
 
+// Bring an existing database up to date ---------------------------------------
+// Every CREATE above is IF NOT EXISTS, which does nothing at all to a table
+// that already exists -- so a database created by an older release keeps that
+// release's columns forever, even though --init is documented as "safe to
+// re-run" and reports "Database ready" with every table present. The failure
+// then lands at runtime on the first query naming a newer column: upgrading
+// across the commit that added sessions.csrf_token, for instance, leaves
+// login.php dying with an uncaught "Unknown column 'csrf_token'" 500 while
+// the schema looks complete.
+//
+// So reconcile the columns that were added after their table was introduced.
+// Each is nullable with a default, so adding one to a populated table is
+// non-destructive and needs no backfill. Checked against information_schema
+// rather than caught from a failed ALTER, so re-running stays silent and
+// idempotent once everything is present.
+$addedColumns = [
+    'sessions' => [
+        'csrf_token' => 'ALTER TABLE sessions ADD COLUMN csrf_token CHAR(64) DEFAULT NULL',
+    ],
+    'sso_challenges' => [
+        'requested_identity' => 'ALTER TABLE sso_challenges ADD COLUMN requested_identity VARCHAR(128) DEFAULT NULL',
+    ],
+];
+$colStmt = $pdo->prepare(
+    "SELECT COUNT(*) FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?"
+);
+$upgraded = 0;
+foreach ($addedColumns as $tbl => $cols) {
+    foreach ($cols as $col => $ddl) {
+        $colStmt->execute([$dbName, $tbl, $col]);
+        if (!$colStmt->fetchColumn()) {
+            $pdo->exec($ddl);
+            echo "  Added missing column: {$tbl}.{$col}\n";
+            $upgraded++;
+        }
+    }
+}
+if ($upgraded > 0) {
+    echo "\nUpgraded {$upgraded} column(s) on an existing database.\n";
+}
+
 // Verify
 $tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
 echo "\nDatabase ready.\n";
