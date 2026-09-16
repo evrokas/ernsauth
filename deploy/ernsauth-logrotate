@@ -1,0 +1,17 @@
+# Reference logrotate config for ernsauth's zops logs.
+#
+# Install:
+#   sudo cp deploy/ernsauth-logrotate /etc/logrotate.d/ernsauth
+#   sudo logrotate -d /etc/logrotate.d/ernsauth   # dry run first
+
+/var/log/zops/ernsauth-backup.log
+/var/log/zops/ernsauth-backup-cron.log
+/var/log/zops/ernsauth-monitor-cron.log {
+    size 10M
+    rotate 12
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0660 www-data www-data
+}

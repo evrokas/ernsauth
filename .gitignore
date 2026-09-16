@@ -1,4 +1,5 @@
 .claude/
 config/settings.php
 lib/phpmailer/
+lib/zops/
 *.log

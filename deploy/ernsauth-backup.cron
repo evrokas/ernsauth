@@ -1,0 +1,22 @@
+# Reference cron.d entry for ernsauth's nightly backup + periodic health
+# check, via the shared zops engine (lib/zops -- see
+# lib/zops/docs/INSTALL.md).
+#
+# Install:
+#   sudo cp deploy/ernsauth-backup.cron /etc/cron.d/ernsauth-backup
+#   sudo chmod 644 /etc/cron.d/ernsauth-backup
+#
+# See deploy/backup.conf.example's own comment for the recommended
+# dedicated "zops" system user and why.
+
+# Nightly backup.
+0 2 * * *  zops  flock -n /run/lock/zops-ernsauth-backup.lock /var/www/ernsauth/lib/zops/bin/zops-backup --site=ernsauth >> /var/log/zops/ernsauth-backup-cron.log 2>&1
+
+# Health check every 15 minutes -- --email-on-change means this only
+# actually emails the administrator (ADMIN_EMAIL in /etc/zops/defaults.conf)
+# when something changes, or a failure has persisted long enough to
+# warrant a reminder, not on every single run. health-handler.php's route
+# checks default to http://127.0.0.1 -- export
+# ERNSAUTH_HEALTH_BASE_URL=... on this line first if ernsauth is served
+# differently on this host.
+*/15 * * * *  zops  /var/www/ernsauth/lib/zops/bin/zops-monitor --site=ernsauth --email-on-change >> /var/log/zops/ernsauth-monitor-cron.log 2>&1
