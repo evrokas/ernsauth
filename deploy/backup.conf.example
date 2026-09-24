@@ -1,0 +1,52 @@
+# Reference site config for zops (lib/zops's bin/zops-backup,
+# bin/zops-monitor, bin/zops-restore, bin/zops-doctor) -- ernsauth's
+# backup/health-check setup (see CLAUDE.md's "Backups + health
+# monitoring" section). See lib/zops/docs/INSTALL.md for the clone
+# command and lib/zops/docs/HANDLERS.md for what
+# backup-handler.php/health-handler.php (both in this same deploy/
+# directory) actually do.
+#
+# Install:
+#   sudo mkdir -p /etc/zops/sites.d
+#   sudo cp deploy/backup.conf.example /etc/zops/sites.d/ernsauth.conf
+#   sudo $EDITOR /etc/zops/sites.d/ernsauth.conf
+#   sudo chmod 600 /etc/zops/sites.d/ernsauth.conf
+#
+# Recommended: a dedicated "zops" system user, group-shared with whichever
+# user Apache/PHP actually runs as -- a compromised web app shouldn't
+# automatically also have the off-site backup SSH key.
+
+BACKUP_HANDLER=/var/www/ernsauth/deploy/backup-handler.php
+HEALTH_HANDLER=/var/www/ernsauth/deploy/health-handler.php
+
+# No Dir::link() element on this app -- ernsauth writes nothing to disk
+# at runtime beyond the database itself, so any scratch location works.
+WORK_DIR=/var/lib/zops/ernsauth-work
+LOG_FILE=/var/log/zops/ernsauth-backup.log
+STATUS_FILE=/var/lib/zops/ernsauth-backup-status.json
+HEALTH_TIMEOUT=30
+
+# --- Destinations (one or more) -----------------------------------------
+DEST_1=ssh:zops@backup.example.com:/srv/zops-backups/ernsauth
+DEST_1_KEY=/home/zops/.ssh/id_ed25519
+#DEST_2=local:/mnt/usb-backup/ernsauth
+
+# --- Retention (tiered daily/weekly/monthly) -----------------------------
+KEEP_DAILY=14
+KEEP_WEEKLY=8
+KEEP_MONTHLY=12
+
+# --- Collector (optional) ------------------------------------------------
+COLLECTOR_URL=https://backup-status.example.com/ingest.php
+COLLECTOR_KEY=
+
+# This app bundles config/settings.php into its "config" backup element
+# (real DB + SMTP credentials) -- see lib/zops/docs/SECURITY.md before
+# choosing a destination for these. This is also the credential store for
+# an authentication gateway shared across every app in this practice's
+# suite, so treat its backups as at least as sensitive as any one app's
+# own database.
+#ENCRYPT_ELEMENTS=true
+#ENCRYPT_PASSPHRASE=
+
+TIMEOUT=1800
