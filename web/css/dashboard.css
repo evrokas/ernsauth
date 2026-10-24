@@ -17,6 +17,8 @@ body {
 }
 .header h1 { font-size: 1.1rem; }
 .header h1 span { color: #5b7cf6; }
+.header h1 { display: flex; align-items: center; }
+.header h1 img { display: block; margin-right: 10px; }
 .header-right { display: flex; align-items: center; gap: 16px; }
 .header-user { font-size: 13px; color: #94a3b8; }
 .header-btn {

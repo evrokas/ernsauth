@@ -29,7 +29,7 @@ $h = function($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
 <body>
 
 <div class="header">
-  <h1>Erns<span>Auth</span></h1>
+  <h1><img src="img/favicon-48.png" width="28" height="28" alt="">Erns<span>Auth</span></h1>
   <div class="header-right">
     <span class="header-user"><?= $h($user['display_name'] ?: $user['username']) ?></span>
     <!-- A form, not a link: signing out changes state, so it goes through

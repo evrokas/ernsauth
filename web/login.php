@@ -199,7 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($error) &&
 </head>
 <body>
 <div class="auth-box">
-  <h1>Erns<span>Auth</span></h1>
+  <h1 class="logo"><img src="img/logo.png" width="300" alt="ErnsAuth"></h1>
   <p class="subtitle"><?= $totpStep ? 'Enter your verification code' : 'Sign in to your account' ?></p>
 
   <?php if ($setupSuccess && !$error): ?>
