@@ -1,5 +1,9 @@
 DirectoryIndex index.php
 
+# Some Apache builds don't map .webmanifest, and would serve the PWA
+# manifest as application/octet-stream, which browsers ignore.
+AddType application/manifest+json .webmanifest
+
 # Deny access to sensitive file types
 <FilesMatch "\.(log|sql|sqlite|json|md|php~)$">
     Require all denied
