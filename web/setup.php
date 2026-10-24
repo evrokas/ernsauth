@@ -69,6 +69,7 @@ $h = function($s) { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8'); };
 <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="img/favicon-16.png">
 <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="css/auth.css">
 </head>
 <body>
