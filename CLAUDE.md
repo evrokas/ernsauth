@@ -53,6 +53,28 @@
 - Route Tracker at `/var/www/html/apps/tracker`
 - Uses `client/ErnsAuthClient.php` for SSO integration
 
+## Client-certificate protection (mTLS) -- added 2026-10-25
+Full guide: `docs/MTLS.md`. The dashboard host (`auth.erns.eu`) requires a
+client certificate from a CA **dedicated to ErnsAuth** whose key lives on the
+operator's own computer (`deploy/mtls/*.sh`); the API runs on a separate host
+(`sso.erns.eu`) serving only `sso-api.php`, protected by API key + rate limits +
+an Apache IP allowlist (no client certificates -- deliberately). Both vhosts
+share `web/` and each refuses the other's files (`deploy/apache/`).
+- **Enforce at vhost level only**, never `SSLVerifyClient optional` or per
+  directory: both force a mid-connection TLS renegotiation, unreliable with
+  TLS 1.3 and in browsers. The requirement lives in one `Include`d file
+  (`ernsauth-mtls.conf`), which doubles as the SSH-only emergency switch.
+- **An expired CRL makes Apache refuse every certificate.** Refresh and
+  install it at least every 60 days; `server-install-crl.sh` refuses a CRL
+  not signed by the CA or expiring within 7 days (`openssl crl -CAfile`
+  exits 0 even on a failed verify -- the script reads its output instead).
+- **Port 80 must not redirect `/.well-known/acme-challenge/`**: validation
+  would follow it to the certificate-requiring :443 and renewal would stop.
+- Chrome on iOS cannot present client certificates (tested): Safari and the
+  home-screen web app can. Don't "fix" a Chrome-on-iPhone report.
+- `deploy/mtls-health.php` holds the testable helpers used by
+  `health-handler.php`; the new checks are opt-in via env vars.
+
 ## Branches
 - `main` — active development
 - `stable` — latest stable release; integrating apps clone this branch

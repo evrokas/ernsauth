@@ -6,6 +6,7 @@
 declare(strict_types=1);
 
 require __DIR__ . '/../lib/zops/lib/handler/bootstrap.php';
+require __DIR__ . '/mtls-health.php';
 
 use ZOps\Handler\Handler;
 use ZOps\Handler\HealthCtx;
@@ -43,16 +44,47 @@ Handler::health([
         // entire trust boundary integrating client apps rely on, so the
         // point is to catch it breaking entirely, not to exercise a real
         // client-app credential.
-        $sso = $h->httpGet($baseUrl . '/web/sso-api.php?action=create_challenge');
+        //
+        // With the API on its own hostname (docs/MTLS.md), point
+        // ERNSAUTH_HEALTH_SSO_URL at that endpoint, e.g.
+        // https://sso.erns.eu/sso-api.php -- this host must be on the API
+        // vhost's IP allowlist for the check to reach it.
+        $ssoUrl = getenv('ERNSAUTH_HEALTH_SSO_URL') ?: $baseUrl . '/web/sso-api.php';
+        $sso = $h->httpGet($ssoUrl . '?action=create_challenge');
         ($sso['code'] === 401)
             ? $h->ok('route.sso_api.gate', 'sso-api.php rejects an unauthenticated request')
             : $h->fail('route.sso_api.gate', 'sso-api.php rejects an unauthenticated request', "HTTP {$sso['code']}" . ($sso['error'] ? " ({$sso['error']})" : ''));
 
-        // A logged-out session must never render the dashboard.
-        $dash = $h->httpGet($baseUrl . '/web/dashboard.php');
-        (in_array($dash['code'], [301, 302, 303, 307, 308], true) || stripos($dash['body'], 'login') !== false)
-            ? $h->ok('route.dashboard.gate', 'Logged-out dashboard redirects to login')
-            : $h->fail('route.dashboard.gate', 'Logged-out dashboard redirects to login', "HTTP {$dash['code']}" . ($dash['error'] ? " ({$dash['error']})" : ''));
+        // The dashboard host demands a client certificate (docs/MTLS.md),
+        // so a certificate-less request can't be used to look at the login
+        // redirect any more -- it is refused at the TLS handshake. When
+        // ERNSAUTH_HEALTH_DASHBOARD_URL is set (e.g. https://auth.erns.eu/),
+        // check THAT instead: the handshake must be refused. A fail here
+        // means the requirement is off (the emergency switch left on).
+        $dashboardUrl = getenv('ERNSAUTH_HEALTH_DASHBOARD_URL');
+        if ($dashboardUrl) {
+            $gate = ernsauth_mtls_gate_check($dashboardUrl);
+            ($gate['level'] === 'ok')
+                ? $h->ok('route.dashboard.mtls', 'Dashboard refuses a connection with no client certificate')
+                : $h->fail('route.dashboard.mtls', 'Dashboard refuses a connection with no client certificate', $gate['detail']);
+
+            // An expired CRL locks every certificate out, so watch it.
+            $crl = ernsauth_crl_check(getenv('ERNSAUTH_CRL_FILE') ?: '/etc/ssl/ernsauth-ca/crl.pem', time());
+            $crlTitle = 'Client-certificate revocation list is current';
+            if ($crl['level'] === 'ok') {
+                $h->ok('mtls.crl', $crlTitle);
+            } elseif ($crl['level'] === 'warn') {
+                $h->warn('mtls.crl', $crlTitle, $crl['detail']);
+            } else {
+                $h->fail('mtls.crl', $crlTitle, $crl['detail']);
+            }
+        } else {
+            // A logged-out session must never render the dashboard.
+            $dash = $h->httpGet($baseUrl . '/web/dashboard.php');
+            (in_array($dash['code'], [301, 302, 303, 307, 308], true) || stripos($dash['body'], 'login') !== false)
+                ? $h->ok('route.dashboard.gate', 'Logged-out dashboard redirects to login')
+                : $h->fail('route.dashboard.gate', 'Logged-out dashboard redirects to login', "HTTP {$dash['code']}" . ($dash['error'] ? " ({$dash['error']})" : ''));
+        }
 
         if ($pdo !== null) {
             $now = time();

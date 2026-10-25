@@ -72,6 +72,11 @@ return [
 ];
 ```
 
+If this ErnsAuth runs the split-host setup (`docs/MTLS.md`), `sso_api_url`
+points at the dedicated API host (e.g. `https://sso.erns.eu/sso-api.php`), and
+your app server's public IP must be on that host's allowlist -- otherwise every
+call fails with HTTP 403 before the API key is even checked.
+
 The API key authenticates **your app**, not your user. Treat it like a database
 password: anyone holding it can create and poll challenges as your app.
 
